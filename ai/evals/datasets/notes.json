@@ -1,0 +1,378 @@
+{
+  "version": "notes-v1",
+  "description": "US-03 accuracy set: 50 fully synthetic voice-note transcripts with the tasks a careful human would extract. Names are invented first names; no real people, phone numbers or addresses. Dates resolve against each note's own 'today' and 'time_zone'. November 2026: Wed 4, Thu 5, Fri 6, Sat 7, Sun 8, Mon 9; Fri 20 / Mon 23 / Fri 27; Mon 30; Fri 4 Dec.",
+  "notes": [
+    {
+      "id": "n01", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["multi", "relative_date", "filler"],
+      "transcript": "okay so um, I need to call the dentist tomorrow to move my cleaning, and uh, pick up the dry cleaning by Friday, oh and email Ms. Rivera about the field trip form.",
+      "expected": [
+        { "title": "Call the dentist to move the cleaning", "kind": "quick", "effort_min": 10, "due_date": "2026-11-05" },
+        { "title": "Pick up the dry cleaning", "kind": "errand", "effort_min": 45, "due_date": "2026-11-06" },
+        { "title": "Email Ms. Rivera about the field trip form", "kind": "quick", "effort_min": 5, "due_date": null }
+      ]
+    },
+    {
+      "id": "n02", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["self_correction", "relative_date"],
+      "transcript": "Remind me to pay the electric bill on Thursday, no wait, it's due Wednesday. Not today, the Wednesday after. So Wednesday.",
+      "expected": [
+        { "title": "Pay the electric bill", "kind": "quick", "effort_min": 5, "due_date": "2026-11-11" }
+      ]
+    },
+    {
+      "id": "n03", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["zero_tasks", "ramble"],
+      "transcript": "Ugh, today was so long. The baby didn't nap, I had like four coffees. Anyway. I don't know. I just wanted to say that out loud. Okay, bye.",
+      "expected": []
+    },
+    {
+      "id": "n04", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["multi", "errand", "relative_date"],
+      "transcript": "When I'm out next, grab diapers and wipes from Target, and also, um, drop the library books back, they're due Saturday.",
+      "expected": [
+        { "title": "Buy diapers and wipes at Target", "kind": "errand", "effort_min": 45, "due_date": null },
+        { "title": "Return the library books", "kind": "errand", "effort_min": 45, "due_date": "2026-11-07" }
+      ]
+    },
+    {
+      "id": "n05", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["project", "end_of_month"],
+      "transcript": "I really need to start on the taxes for the side business, like gather all the receipts and everything. It's a whole thing. Before the end of the month ideally.",
+      "expected": [
+        { "title": "Gather receipts and start the side business taxes", "kind": "project", "effort_min": 180, "due_date": "2026-11-30" }
+      ]
+    },
+    {
+      "id": "n06", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["multi", "filler", "explicit_date"],
+      "transcript": "So like, the thing, the thing with the car, I need to book the oil change, it's overdue, and um, renew the registration online, that's due the 15th. And text Sam happy birthday today!",
+      "expected": [
+        { "title": "Book the oil change", "kind": "quick", "effort_min": 10, "due_date": null },
+        { "title": "Renew the car registration online", "kind": "quick", "effort_min": 20, "due_date": "2026-11-15" },
+        { "title": "Text Sam happy birthday", "kind": "quick", "effort_min": 5, "due_date": "2026-11-04" }
+      ]
+    },
+    {
+      "id": "n07", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["cancellation", "self_correction", "weekend"],
+      "transcript": "I need to go to the bank to deposit the check, actually no, I can do it on the app, so deposit the check on the app. Forget the bank. Also text Grandma the photos this weekend.",
+      "expected": [
+        { "title": "Deposit the check in the bank app", "kind": "quick", "effort_min": 5, "due_date": null },
+        { "title": "Text Grandma the photos", "kind": "quick", "effort_min": 5, "due_date": "2026-11-07" }
+      ]
+    },
+    {
+      "id": "n08", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["mixed_language", "spanish", "multi"],
+      "transcript": "Okay, tengo que pick up the kids early el viernes porque hay early release, and también comprar leche y huevos, y llamar a la pediatra para hacer la cita de Mateo.",
+      "expected": [
+        { "title": "Pick up the kids early from school", "kind": "errand", "effort_min": 45, "due_date": "2026-11-06" },
+        { "title": "Buy milk and eggs", "kind": "errand", "effort_min": 45, "due_date": null },
+        { "title": "Call the pediatrician to book Mateo's appointment", "kind": "quick", "effort_min": 10, "due_date": null }
+      ]
+    },
+    {
+      "id": "n09", "today": "2026-11-04", "time_zone": "Asia/Kolkata", "tags": ["mixed_language", "hinglish", "relative_date"],
+      "transcript": "Kal subah mummy ko call karna hai about the flight tickets, aur haan, electricity bill bhi pay karna hai, last date Friday hai. Bas.",
+      "expected": [
+        { "title": "Call Mom about the flight tickets", "kind": "quick", "effort_min": 5, "due_date": "2026-11-05" },
+        { "title": "Pay the electricity bill", "kind": "quick", "effort_min": 5, "due_date": "2026-11-06" }
+      ]
+    },
+    {
+      "id": "n10", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["ramble", "buried_task", "relative_date"],
+      "transcript": "So I was thinking about how the kitchen is such a mess and honestly the whole house, and my sister said she'd come over Sunday which, okay, fine, but that means I really should at least put clean sheets on the guest bed before she gets here Sunday. Anyway the boxes in there are a whole other thing, not now.",
+      "expected": [
+        { "title": "Put clean sheets on the guest bed", "kind": "quick", "effort_min": 10, "due_date": "2026-11-08" }
+      ]
+    },
+    {
+      "id": "n11", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["multi", "list", "six_tasks"],
+      "transcript": "Okay list. Pay rent. Call the vet about Biscuit's shots. Order the birthday present for Leo. Email the landlord about the leaky faucet. Schedule the furnace inspection. Cancel the streaming subscription we never use.",
+      "expected": [
+        { "title": "Pay rent", "kind": "quick", "effort_min": 5, "due_date": null },
+        { "title": "Call the vet about Biscuit's shots", "kind": "quick", "effort_min": 5, "due_date": null },
+        { "title": "Order Leo's birthday present", "kind": "quick", "effort_min": 20, "due_date": null },
+        { "title": "Email the landlord about the leaky faucet", "kind": "quick", "effort_min": 5, "due_date": null },
+        { "title": "Schedule the furnace inspection", "kind": "quick", "effort_min": 10, "due_date": null },
+        { "title": "Cancel the unused streaming subscription", "kind": "quick", "effort_min": 5, "due_date": null }
+      ]
+    },
+    {
+      "id": "n12", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["in_n_weeks", "end_of_month"],
+      "transcript": "I have to return the rain jacket to the store within two weeks, that's the return window, and renew the parking permit online before the end of the month.",
+      "expected": [
+        { "title": "Return the rain jacket to the store", "kind": "errand", "effort_min": 45, "due_date": "2026-11-18" },
+        { "title": "Renew the parking permit online", "kind": "quick", "effort_min": 20, "due_date": "2026-11-30" }
+      ]
+    },
+    {
+      "id": "n13", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["zero_tasks", "other_people"],
+      "transcript": "My husband needs to call his mom back, that's on him, not me. And the kids' school is closed Monday, which, whatever, fine.",
+      "expected": []
+    },
+    {
+      "id": "n14", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["vague_date"],
+      "transcript": "At some point I should cancel the extra phone line we don't use. No rush, it's just annoying paying for it.",
+      "expected": [
+        { "title": "Cancel the unused phone line", "kind": "quick", "effort_min": 20, "due_date": null }
+      ]
+    },
+    {
+      "id": "n15", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["tonight"],
+      "transcript": "Tonight before bed I have to sign Ava's permission slip and stick it in her backpack.",
+      "expected": [
+        { "title": "Sign Ava's permission slip", "kind": "quick", "effort_min": 5, "due_date": "2026-11-04" }
+      ]
+    },
+    {
+      "id": "n16", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["project", "explicit_date"],
+      "transcript": "Okay big one: plan the holiday party for the team. Need a venue, a date, food, all of it. I need it figured out by the 20th.",
+      "expected": [
+        { "title": "Plan the team holiday party", "kind": "project", "effort_min": 240, "due_date": "2026-11-20" }
+      ]
+    },
+    {
+      "id": "n17", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["multi", "errand", "weekday"],
+      "transcript": "Saturday errands: Costco run, pick up the prescription at CVS, and get the car washed.",
+      "expected": [
+        { "title": "Do the Costco run", "kind": "errand", "effort_min": 90, "due_date": "2026-11-07" },
+        { "title": "Pick up the prescription at CVS", "kind": "errand", "effort_min": 45, "due_date": "2026-11-07" },
+        { "title": "Get the car washed", "kind": "errand", "effort_min": 45, "due_date": "2026-11-07" }
+      ]
+    },
+    {
+      "id": "n18", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["self_correction", "name_correction"],
+      "transcript": "Tomorrow text Priya, no, not Priya, Meera, about the carpool.",
+      "expected": [
+        { "title": "Text Meera about the carpool", "kind": "quick", "effort_min": 5, "due_date": "2026-11-05" }
+      ]
+    },
+    {
+      "id": "n19", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["project", "stated_effort", "weekday"],
+      "transcript": "I need to finally clean out the garage. It's going to take most of Saturday, like six hours probably.",
+      "expected": [
+        { "title": "Clean out the garage", "kind": "project", "effort_min": 360, "due_date": "2026-11-07" }
+      ]
+    },
+    {
+      "id": "n20", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["filler", "explicit_date", "errand"],
+      "transcript": "um, uh, so, like, go to the post office, um, and mail Grandma's birthday card, uh, by the 10th because her birthday's the 12th.",
+      "expected": [
+        { "title": "Mail Grandma's birthday card at the post office", "kind": "errand", "effort_min": 45, "due_date": "2026-11-10" }
+      ]
+    },
+    {
+      "id": "n21", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["zero_tasks", "test_recording"],
+      "transcript": "Just testing if this thing works. Testing, one, two, three. Okay.",
+      "expected": []
+    },
+    {
+      "id": "n22", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["relative_date", "context_date"],
+      "transcript": "Ava has picture day on Friday so I need to iron her blue dress Thursday night.",
+      "expected": [
+        { "title": "Iron Ava's blue dress", "kind": "quick", "effort_min": 10, "due_date": "2026-11-05" }
+      ]
+    },
+    {
+      "id": "n23", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["work", "stated_effort", "multi"],
+      "transcript": "Finish the slides for Monday's review, that's probably two hours, and send Jordan the budget numbers today.",
+      "expected": [
+        { "title": "Finish the slides for Monday's review", "kind": "project", "effort_min": 120, "due_date": "2026-11-09" },
+        { "title": "Send Jordan the budget numbers", "kind": "quick", "effort_min": 5, "due_date": "2026-11-04" }
+      ]
+    },
+    {
+      "id": "n24", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["health", "no_date"],
+      "transcript": "Call the pharmacy to refill my thyroid meds, I only have like three pills left.",
+      "expected": [
+        { "title": "Call the pharmacy to refill thyroid medication", "kind": "quick", "effort_min": 5, "due_date": null }
+      ]
+    },
+    {
+      "id": "n25", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["multi", "errand", "weekday"],
+      "transcript": "Buy cookies for the bake sale on Thursday, and get a gift card for the teacher at the grocery store while I'm there.",
+      "expected": [
+        { "title": "Buy cookies for the bake sale", "kind": "errand", "effort_min": 45, "due_date": "2026-11-05" },
+        { "title": "Buy a gift card for the teacher", "kind": "errand", "effort_min": 45, "due_date": "2026-11-05" }
+      ]
+    },
+    {
+      "id": "n26", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["project", "stated_effort", "explicit_date"],
+      "transcript": "Deadline is the 15th for open enrollment, so I have to pick a health plan, and it's a lot of reading so block like two hours. Also ask HR tomorrow if dental is included.",
+      "expected": [
+        { "title": "Pick a health plan for open enrollment", "kind": "project", "effort_min": 120, "due_date": "2026-11-15" },
+        { "title": "Ask HR if dental is included", "kind": "quick", "effort_min": 5, "due_date": "2026-11-05" }
+      ]
+    },
+    {
+      "id": "n27", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["zero_tasks", "already_done"],
+      "transcript": "So I already called the plumber and he's coming Thursday, and I paid the water bill this morning. Feeling weirdly productive.",
+      "expected": []
+    },
+    {
+      "id": "n28", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["partly_done"],
+      "transcript": "I picked up the kids' shoes already, but I still need to return the wrong size ones to the store.",
+      "expected": [
+        { "title": "Return the wrong-size shoes to the store", "kind": "errand", "effort_min": 45, "due_date": null }
+      ]
+    },
+    {
+      "id": "n29", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["mixed_language", "spanish", "relative_date"],
+      "transcript": "Recordarme: mañana call the insurance about the claim, that always takes forever, and pay the credit card, vence el lunes.",
+      "expected": [
+        { "title": "Call the insurance company about the claim", "kind": "quick", "effort_min": 20, "due_date": "2026-11-05" },
+        { "title": "Pay the credit card bill", "kind": "quick", "effort_min": 5, "due_date": "2026-11-09" }
+      ]
+    },
+    {
+      "id": "n30", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["vague_date", "errand"],
+      "transcript": "Sometime next week I should really get my hair cut.",
+      "expected": [
+        { "title": "Get a haircut", "kind": "errand", "effort_min": 45, "due_date": null }
+      ]
+    },
+    {
+      "id": "n31", "today": "2026-11-07", "time_zone": "America/New_York", "tags": ["saturday", "relative_date", "project"],
+      "transcript": "It's Saturday, ugh. Tomorrow I gotta meal prep for the week, and Monday morning drop the dog off at the groomer.",
+      "expected": [
+        { "title": "Meal prep for the week", "kind": "project", "effort_min": 120, "due_date": "2026-11-08" },
+        { "title": "Drop the dog off at the groomer", "kind": "errand", "effort_min": 45, "due_date": "2026-11-09" }
+      ]
+    },
+    {
+      "id": "n32", "today": "2026-11-07", "time_zone": "America/New_York", "tags": ["saturday", "weekend", "stated_effort"],
+      "transcript": "This weekend: fix the squeaky cabinet door, it takes five minutes, and call Dad.",
+      "expected": [
+        { "title": "Fix the squeaky cabinet door", "kind": "quick", "effort_min": 5, "due_date": "2026-11-07" },
+        { "title": "Call Dad", "kind": "quick", "effort_min": 5, "due_date": "2026-11-07" }
+      ]
+    },
+    {
+      "id": "n33", "today": "2026-11-30", "time_zone": "America/Los_Angeles", "tags": ["month_boundary", "multi", "vague_date"],
+      "transcript": "End of the month already?! Pay rent today, submit the expense report by Friday, and renew the domain thing sometime.",
+      "expected": [
+        { "title": "Pay rent", "kind": "quick", "effort_min": 5, "due_date": "2026-11-30" },
+        { "title": "Submit the expense report", "kind": "quick", "effort_min": 20, "due_date": "2026-12-04" },
+        { "title": "Renew the domain", "kind": "quick", "effort_min": 5, "due_date": null }
+      ]
+    },
+    {
+      "id": "n34", "today": "2026-11-30", "time_zone": "America/Los_Angeles", "tags": ["project", "vague_date"],
+      "transcript": "Tomorrow's December first, so I should swap the closet over to winter clothes this week, it's a whole afternoon thing.",
+      "expected": [
+        { "title": "Swap the closet to winter clothes", "kind": "project", "effort_min": 180, "due_date": null }
+      ]
+    },
+    {
+      "id": "n35", "today": "2026-11-20", "time_zone": "Europe/London", "tags": ["british_english", "weekday", "multi"],
+      "transcript": "Right, on Monday I need to post the parcel back to the shop and book the boiler service.",
+      "expected": [
+        { "title": "Post the parcel back to the shop", "kind": "errand", "effort_min": 45, "due_date": "2026-11-23" },
+        { "title": "Book the boiler service", "kind": "quick", "effort_min": 10, "due_date": "2026-11-23" }
+      ]
+    },
+    {
+      "id": "n36", "today": "2026-11-20", "time_zone": "Europe/London", "tags": ["british_english", "self_correction", "explicit_date"],
+      "transcript": "Send a fiver in for the school charity day, it's next Friday, no, hang on, it's on the 27th.",
+      "expected": [
+        { "title": "Send a fiver for the school charity day", "kind": "quick", "effort_min": 5, "due_date": "2026-11-27" }
+      ]
+    },
+    {
+      "id": "n37", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["errand", "self_correction", "multi"],
+      "transcript": "Hardware store for lightbulbs, and the, um, the furnace filter, the sixteen by twenty-five one. Oh and the pharmacy. Actually the pharmacy can wait till Friday.",
+      "expected": [
+        { "title": "Buy lightbulbs and a furnace filter at the hardware store", "kind": "errand", "effort_min": 45, "due_date": null },
+        { "title": "Go to the pharmacy", "kind": "errand", "effort_min": 45, "due_date": "2026-11-06" }
+      ]
+    },
+    {
+      "id": "n38", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["transcription_error", "today"],
+      "transcript": "Call the vet about Biscuit's ear in faction, it's getting worse, today if possible.",
+      "expected": [
+        { "title": "Call the vet about Biscuit's ear infection", "kind": "quick", "effort_min": 5, "due_date": "2026-11-04" }
+      ]
+    },
+    {
+      "id": "n39", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["work", "weekend", "stated_effort"],
+      "transcript": "Reply to that recruiter email from yesterday, and update my resume this weekend, that's like a three hour job.",
+      "expected": [
+        { "title": "Reply to the recruiter email", "kind": "quick", "effort_min": 5, "due_date": null },
+        { "title": "Update my resume", "kind": "project", "effort_min": 180, "due_date": "2026-11-07" }
+      ]
+    },
+    {
+      "id": "n40", "today": "2026-11-04", "time_zone": "Asia/Kolkata", "tags": ["mixed_language", "hinglish", "multi"],
+      "transcript": "Aaj shaam ko sabzi lani hai, and Riya ki tuition fee pay karni hai online by the 10th.",
+      "expected": [
+        { "title": "Buy vegetables", "kind": "errand", "effort_min": 45, "due_date": "2026-11-04" },
+        { "title": "Pay Riya's tuition fee online", "kind": "quick", "effort_min": 5, "due_date": "2026-11-10" }
+      ]
+    },
+    {
+      "id": "n41", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["zero_tasks", "hypothetical"],
+      "transcript": "If I had any time I'd learn pottery, but I don't, so. Whatever. Not happening this year.",
+      "expected": []
+    },
+    {
+      "id": "n42", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["duplicate", "self_correction"],
+      "transcript": "Call the pediatrician. Did I say that already? Call the pediatrician to book the flu shots. Yeah.",
+      "expected": [
+        { "title": "Call the pediatrician to book the flu shots", "kind": "quick", "effort_min": 10, "due_date": null }
+      ]
+    },
+    {
+      "id": "n43", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["errand", "multi"],
+      "transcript": "Drop off the donation bags at Goodwill and then pick up the dry cleaning on the way back.",
+      "expected": [
+        { "title": "Drop off the donation bags at Goodwill", "kind": "errand", "effort_min": 45, "due_date": null },
+        { "title": "Pick up the dry cleaning", "kind": "errand", "effort_min": 45, "due_date": null }
+      ]
+    },
+    {
+      "id": "n44", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["project", "end_of_month", "nesting"],
+      "transcript": "I want to set up the baby's room, paint it, put the crib together, the whole thing, by the end of the month.",
+      "expected": [
+        { "title": "Set up the baby's room", "kind": "project", "effort_min": 240, "due_date": "2026-11-30" }
+      ]
+    },
+    {
+      "id": "n45", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["time_of_day", "relative_date"],
+      "transcript": "Tomorrow at three call the school about the bus route.",
+      "expected": [
+        { "title": "Call the school about the bus route", "kind": "quick", "effort_min": 5, "due_date": "2026-11-05" }
+      ]
+    },
+    {
+      "id": "n46", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["money", "no_date"],
+      "transcript": "Venmo Alex forty bucks for the concert tickets.",
+      "expected": [
+        { "title": "Pay Alex back for the concert tickets", "kind": "quick", "effort_min": 5, "due_date": null }
+      ]
+    },
+    {
+      "id": "n47", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["brain_dump", "multi", "stated_effort"],
+      "transcript": "Okay, brain dump. The car's making a noise so take it to the mechanic, maybe Monday. Kids need new winter boots, so shoe shopping this weekend. I have to RSVP to Jess's baby shower by Friday. And, uh, I keep forgetting, back up my phone photos, it's like an hour.",
+      "expected": [
+        { "title": "Take the car to the mechanic", "kind": "errand", "effort_min": 60, "due_date": "2026-11-09" },
+        { "title": "Buy winter boots for the kids", "kind": "errand", "effort_min": 60, "due_date": "2026-11-07" },
+        { "title": "RSVP to Jess's baby shower", "kind": "quick", "effort_min": 5, "due_date": "2026-11-06" },
+        { "title": "Back up my phone photos", "kind": "quick", "effort_min": 60, "due_date": null }
+      ]
+    },
+    {
+      "id": "n48", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["zero_tasks", "fact"],
+      "transcript": "Just so I remember, the clocks went back on Sunday. That's why I'm so confused.",
+      "expected": []
+    },
+    {
+      "id": "n49", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["relative_date", "night_before"],
+      "transcript": "Day after tomorrow is trash day so take the bins out the night before.",
+      "expected": [
+        { "title": "Take the trash bins out", "kind": "quick", "effort_min": 5, "due_date": "2026-11-05" }
+      ]
+    },
+    {
+      "id": "n50", "today": "2026-11-04", "time_zone": "America/Chicago", "tags": ["mixed_language", "spanish", "multi"],
+      "transcript": "Necesito hacer la cita del DMV para renovar la licencia, and print the forms para el jueves.",
+      "expected": [
+        { "title": "Book the DMV appointment to renew my license", "kind": "quick", "effort_min": 10, "due_date": null },
+        { "title": "Print the DMV forms", "kind": "quick", "effort_min": 5, "due_date": "2026-11-05" }
+      ]
+    }
+  ]
+}

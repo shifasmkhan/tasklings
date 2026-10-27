@@ -1,0 +1,65 @@
+name: ai
+
+# US-03: offline checks for the extraction module and eval harness.
+# No API key is used or available here; live evals run locally.
+on:
+  pull_request:
+    paths:
+      - "ai/**"
+      - ".github/workflows/ai.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ai/**"
+      - ".github/workflows/ai.yml"
+
+# Least privilege: read the code, nothing else.
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ai unit tests (node)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.20.0"
+      - name: Install (lockfile only, no install scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Type-check
+        run: npm run typecheck
+      - name: Unit tests (validator, prompt, pipeline, scorer, injection checker, datasets)
+        run: npm test
+      - name: Dry-run eval (validator + scorer against expected outputs)
+        run: npm run eval:dry
+
+  deno:
+    name: ai extraction module (deno)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.6
+      - name: Type-check and run under Deno (no permissions)
+        run: |
+          deno check src/extraction/mod.ts deno/smoke.ts
+          deno run --no-prompt deno/smoke.ts

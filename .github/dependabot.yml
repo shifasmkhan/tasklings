@@ -9,8 +9,31 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-  # Expo app. Expo SDK packages move together, so they're grouped into one PR;
-  # SDK major upgrades are done by hand with `npx expo install --fix`.
+  # Supabase CLI and Deno pins for the backend (supabase/package.json).
+  - package-ecosystem: "npm"
+    directory: "/supabase"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  # Edge function imports (supabase/functions/deno.json and deno.lock).
+  - package-ecosystem: "deno"
+    directory: "/supabase/functions"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  # AI pipeline (US-03): Anthropic SDK + type-checking dev tools.
+  - package-ecosystem: "npm"
+    directory: "/ai"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  # Expo app (app/), with SDK packages grouped so they move together.
   - package-ecosystem: "npm"
     directory: "/app"
     schedule:
@@ -33,4 +56,3 @@ updates:
     ignore:
       - dependency-name: "expo"
         update-types: ["version-update:semver-major"]
-  # Add pip (/ai) and Deno entries when those projects exist.

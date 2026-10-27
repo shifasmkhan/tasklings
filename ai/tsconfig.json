@@ -1,0 +1,23 @@
+{
+  // Type-check only. Code runs as-is via Node's built-in type stripping and in
+  // Deno, so it must stay within erasable TypeScript (no enums, namespaces or
+  // parameter properties) and import local files with their .ts extension.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "evals/**/*.ts", "test/**/*.ts"]
+}
