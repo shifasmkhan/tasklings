@@ -5,8 +5,35 @@ import type { IsoDate, Task } from '@/api/types';
 import { CheckIcon, MicIcon } from '@/components/icons';
 import { MIN_TOUCH, usePalette } from '@/theme/colors';
 import { completionHaptic } from './haptics';
-import { formatMinutes, GROUP_LABELS, isDueByToday, plural, taskMeta, type TodaySummary } from './logic';
+import {
+  formatMinutes,
+  GROUP_LABELS,
+  isDueByToday,
+  NEEDS_REVIEW_CARD_TEXT,
+  NEEDS_REVIEW_LABEL,
+  plural,
+  taskMeta, type TodaySummary,
+} from './logic';
 import type { Toast } from './useToday';
+
+/**
+ * Passive card for a task saved as a single note. It is a plain tappable card: no prompt, modal
+ * or push, and it asks nothing. Tapping opens the Task detail placeholder.
+ */
+export function ReviewCard({ task, onOpen }: { task: Task; onOpen: (task: Task) => void }) {
+  const p = usePalette();
+  return (
+    <Pressable
+      role="button"
+      aria-label={NEEDS_REVIEW_CARD_TEXT}
+      accessibilityHint="Opens task details"
+      onPress={() => onOpen(task)}
+      style={[styles.card, styles.review, { backgroundColor: p.card }]}
+    >
+      <Text style={[styles.secondary15, { color: p.text }]}>{NEEDS_REVIEW_CARD_TEXT}</Text>
+    </Pressable>
+  );
+}
 
 export function SummaryCard({ summary }: { summary: TodaySummary }) {
   const p = usePalette();
@@ -77,13 +104,15 @@ export function StartHereCard({ task, today, onDone, onSkip, onOpen }: StartHere
       <Text style={[styles.eyebrow, { color: p.accent }]}>{eyebrow.toUpperCase()}</Text>
       <Pressable
         role="button"
-        aria-label={`${task.title}, ${taskMeta(task, today)}`}
+        aria-label={[task.title, taskMeta(task, today), task.needs_review ? NEEDS_REVIEW_LABEL : null].filter(Boolean).join(', ')}
         accessibilityHint="Opens task details"
         onPress={() => onOpen(task)}
         style={styles.gap4}
       >
         <Text style={[styles.startTitle, { color: p.text }]}>{task.title}</Text>
-        <Text style={[styles.secondary15, { color: p.secondaryText }]}>{taskMeta(task, today)}</Text>
+        <Text style={[styles.secondary15, { color: p.secondaryText }]}>
+          {[taskMeta(task, today), task.needs_review ? NEEDS_REVIEW_LABEL : null].filter(Boolean).join(' · ')}
+        </Text>
       </Pressable>
       <View style={styles.startButtons}>
         <Pressable
@@ -258,6 +287,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: 18, padding: 16 },
   listCard: { borderRadius: 14, overflow: 'hidden' },
   summary: { gap: 14 },
+  review: { minHeight: MIN_TOUCH, justifyContent: 'center' },
   gap4: { gap: 4 },
   gap8: { gap: 8 },
   center: { textAlign: 'center' },

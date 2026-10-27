@@ -12,6 +12,7 @@ interface Seed {
   effort: number;
   carry: number;
   dueOffset: number | null;
+  needsReview?: boolean;
 }
 
 const SEEDS: Seed[] = [
@@ -21,6 +22,16 @@ const SEEDS: Seed[] = [
   { id: 'e1', kind: 'errand', title: 'Return the package at the post office', effort: 20, carry: 0, dueOffset: 0 },
   { id: 'e2', kind: 'errand', title: 'Pick up dry cleaning', effort: 15, carry: 2, dueOffset: null },
   { id: 'b1', kind: 'project', title: 'Renew passport', effort: 60, carry: 0, dueOffset: null },
+  // Synthetic extraction fallback: the whole (fake) transcript saved as one task, flagged for review.
+  {
+    id: 'r1',
+    kind: 'quick',
+    title: 'Buy stamps, book the vet, email Sam about the invoice',
+    effort: 15,
+    carry: 0,
+    dueOffset: null,
+    needsReview: true,
+  },
 ];
 
 function uuidFor(seedId: string): string {
@@ -52,6 +63,7 @@ export function makeTask(
     completed_at: null,
     dropped_reason: null,
     script: null,
+    needs_review: false,
     sort_order: 0,
     created_at: `${addDays(today, -carry)}T08:00:00.000Z`,
     updated_at: `${today}T08:00:00.000Z`,
@@ -69,6 +81,7 @@ export function seedTasks(today: IsoDate): Task[] {
         effort_min: s.effort,
         carry_count: s.carry,
         due_date: s.dueOffset === null ? null : addDays(today, s.dueOffset),
+        needs_review: s.needsReview ?? false,
         sort_order: i,
       },
       today,

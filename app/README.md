@@ -30,11 +30,12 @@ npm run test:ci
 | `src/features/today/` | Today screen (US-04), the Start here rule and grouping logic, undo (US-09) |
 | `src/theme/` | Light and dark palettes; contrast is tested |
 | `src/lib/log.ts` | The only logger: IDs and codes only, never titles, notes or transcripts |
+| `src/lib/nonce.ts` | Sign in with Apple nonce: secure random raw value plus its SHA-256 hex (client side; sign-in itself is US-10) |
 
 ## Rules for this folder
 
 - Screens depend on `ApiClient` only. Don't add an endpoint, column or field the PRD doesn't define.
 - No analytics or crash-reporting SDKs. `console` is a lint error outside `src/lib/log.ts`.
 - Over-the-air updates are off (`updates.enabled: false`); EAS Update is not configured.
-- Bundle ID `com.example.tasklings` is a placeholder until the owner picks one. There is no app icon yet (owner decision); Expo shows its default.
+- Bundle ID is `com.shifasmkhan.tasklings`. There is no app icon yet (owner decision); Expo shows its default.
 - Pin exact versions and commit `package-lock.json`.

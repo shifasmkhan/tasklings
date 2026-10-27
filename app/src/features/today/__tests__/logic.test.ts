@@ -2,6 +2,7 @@ import { makeTask } from '@/api/fixtures';
 import type { Task } from '@/api/types';
 import {
   carriedLabel,
+  firstNeedingReview,
   formatMinutes,
   groupTasks,
   pickStartHere,
@@ -152,5 +153,16 @@ describe('labels', () => {
     expect(taskMeta(task('a', { effort_min: 5, due_date: TODAY }), TODAY)).toBe('5 min · Due today');
     expect(taskMeta(task('b', { effort_min: 5, due_date: '2026-10-01' }), TODAY)).toBe('5 min · Overdue');
     expect(taskMeta(task('c', { effort_min: 5, due_date: '2026-11-01' }), TODAY)).toBe('5 min');
+  });
+});
+
+describe('firstNeedingReview', () => {
+  it('returns the first flagged task in list order, or null', () => {
+    const a = makeTask({ id: 'a', title: 'Synthetic a', kind: 'quick' }, '2026-10-26');
+    const b = makeTask({ id: 'b', title: 'Synthetic b', kind: 'quick', needs_review: true }, '2026-10-26');
+    const c = makeTask({ id: 'c', title: 'Synthetic c', kind: 'quick', needs_review: true }, '2026-10-26');
+    expect(firstNeedingReview([a, b, c])?.id).toBe('b');
+    expect(firstNeedingReview([a])).toBeNull();
+    expect(firstNeedingReview([])).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 import type { ReactNode } from 'react';
+import { AccessibilityInfo, Alert } from 'react-native';
 
 import { ApiProvider } from '@/api/ApiProvider';
 import { makeTask } from '@/api/fixtures';
@@ -351,5 +352,152 @@ describe('Today screen (US-04)', () => {
     expect(screen.getByLabelText('Start here')).toHaveStyle({ backgroundColor: dark.card, borderColor: dark.accent });
     expect(screen.getByText('Today')).toHaveStyle({ color: dark.text });
     expect(rowFor('Reply to the landlord').getByText('Day 3')).toHaveStyle({ color: dark.secondaryText });
+  });
+});
+
+describe('Undo window with a screen reader (US-09)', () => {
+  // Other components may listen too, so keep every screenReaderChanged handler and call them all.
+  let handlers: ((enabled: boolean) => void)[] = [];
+  const changeHandler = (enabled: boolean) => handlers.forEach((h) => h(enabled));
+  const remove = jest.fn();
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockScheme = 'light';
+    handlers = [];
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation(((event: string, handler: (e: boolean) => void) => {
+      if (event === 'screenReaderChanged') handlers.push(handler);
+      return { remove };
+    }) as unknown as typeof AccessibilityInfo.addEventListener);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  async function completeOne() {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await renderToday();
+    await user.press(screen.getByRole('button', { name: 'Mark done: Text the neighbour' }));
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeOnTheScreen();
+  }
+
+  it('keeps the toast 10 seconds while VoiceOver is on, and not 5', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    await completeOne();
+    await act(async () => {
+      jest.advanceTimersByTime(9000);
+    });
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeOnTheScreen();
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeOnTheScreen();
+  });
+
+  it('keeps the toast 5 seconds when no screen reader is running', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+    await completeOne();
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeOnTheScreen();
+  });
+
+  it('follows screenReaderChanged: on gives 10 seconds, off gives 5 again', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await renderToday();
+
+    await act(async () => changeHandler(true));
+    await user.press(screen.getByRole('button', { name: 'Mark done: Text the neighbour' }));
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeOnTheScreen();
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeOnTheScreen();
+
+    await act(async () => changeHandler(false));
+    await user.press(screen.getByRole('button', { name: 'Mark done: Reply to the landlord' }));
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeOnTheScreen();
+  });
+
+  it('removes its listener on unmount', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+    await renderToday();
+    await screen.unmount();
+    expect(remove).toHaveBeenCalled();
+  });
+});
+
+describe('Needs review (owner-approved needs_review field)', () => {
+  const flagged = () =>
+    makeTask(
+      { id: 'r-flag', title: 'Buy stamps, book the vet, email Sam', kind: 'quick', effort_min: 15, needs_review: true, sort_order: 9 },
+      TODAY,
+    );
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockScheme = 'light';
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  it('shows a quiet Needs a look label on the flagged row only', async () => {
+    await renderToday([...fixtures(), flagged()]);
+    const label = rowFor('Buy stamps, book the vet, email Sam').getByText('Needs a look');
+    expect(label).toBeOnTheScreen();
+    expect(label).toHaveStyle({ color: light.secondaryText });
+    expect(label).not.toHaveStyle({ color: light.dropAction });
+    expect(screen.getAllByText('Needs a look')).toHaveLength(1);
+  });
+
+  it('shows the passive card at the top and opens the flagged task', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await renderToday([...fixtures(), flagged()]);
+    const card = screen.getByRole('button', { name: 'We saved one note as a single task. Tap to fix.' });
+    // It sits above the summary card.
+    const order = screen.toJSON() as unknown;
+    const text = JSON.stringify(order);
+    expect(text.indexOf('We saved one note')).toBeLessThan(text.indexOf('Today summary'));
+    await user.press(card);
+    expect(nav.openTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'r-flag', needs_review: true }));
+  });
+
+  it('asks nothing: no alert or dialog, and nothing opens by itself', async () => {
+    const alert = jest.spyOn(Alert, 'alert');
+    await renderToday([...fixtures(), flagged()]);
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeOnTheScreen();
+    expect(nav.openTask).not.toHaveBeenCalled();
+  });
+
+  it('shows neither card nor label when nothing needs review', async () => {
+    await renderToday();
+    expect(screen.queryByText('Needs a look')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/We saved one note/)).not.toBeOnTheScreen();
+  });
+
+  it('keeps the label when the flagged task is the Start here pick', async () => {
+    await renderToday([makeTask({ ...flagged(), due_date: TODAY }, TODAY)]);
+    expect(startCard().getByText(/Needs a look/)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'We saved one note as a single task. Tap to fix.' })).toBeOnTheScreen();
+  });
+
+  it('uses the dark palette for the label in dark mode', async () => {
+    mockScheme = 'dark';
+    await renderToday([...fixtures(), flagged()]);
+    expect(rowFor('Buy stamps, book the vet, email Sam').getByText('Needs a look')).toHaveStyle({ color: dark.secondaryText });
   });
 });

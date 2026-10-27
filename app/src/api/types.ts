@@ -30,6 +30,11 @@ export interface Task {
   completed_at: IsoTimestamp | null;
   dropped_reason: DroppedReason | null;
   script: string | null;
+  /**
+   * True when extraction failed twice and the whole transcript was saved as one task. The backend
+   * clears it when the user edits the task. Owner-approved addition; pending a PRD update.
+   */
+  needs_review: boolean;
   sort_order: number;
   created_at: IsoTimestamp;
   updated_at: IsoTimestamp;
@@ -67,8 +72,11 @@ export interface ProcessCaptureResponse {
  * Every method rejects with ApiError on failure.
  */
 export interface ApiClient {
-  /** Sign in: Supabase Auth with an Apple identity token. */
-  signInWithApple(identityToken: string): Promise<Session>;
+  /**
+   * Sign in: Supabase Auth with an Apple identity token. `rawNonce` is the unhashed nonce whose
+   * SHA-256 hex was sent to Apple (see lib/nonce.ts); Supabase checks it against the token.
+   */
+  signInWithApple(identityToken: string, rawNonce: string): Promise<Session>;
   /** process-capture edge function: 202 {capture_id}; tasks arrive by realtime. */
   processCapture(request: ProcessCaptureRequest): Promise<ProcessCaptureResponse>;
   /** today_tasks() RPC. */

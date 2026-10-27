@@ -85,9 +85,10 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
       return [...tasks.values()].map((t) => ({ ...t }));
     },
 
-    signInWithApple(identityToken: string): Promise<Session> {
+    signInWithApple(identityToken: string, rawNonce: string): Promise<Session> {
       return call(() => {
         if (!identityToken) throw new ApiError('unauthenticated', 'Missing identity token', 401);
+        if (!rawNonce) throw new ApiError('invalid_argument', 'Missing nonce', 400);
         return {
           access_token: 'mock-session',
           user_id: MOCK_USER_ID,
@@ -175,6 +176,8 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
         if (edit.kind !== undefined) patch.kind = edit.kind;
         if (edit.due_date !== undefined) patch.due_date = edit.due_date;
         if (edit.notes !== undefined) patch.notes = edit.notes;
+        // The backend clears needs_review on any user edit (owner-approved rule).
+        patch.needs_review = false;
         return write(t, patch, false);
       });
     },

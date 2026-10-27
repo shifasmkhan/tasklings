@@ -105,6 +105,15 @@ export function carriedLabel(task: Task): string | null {
   return task.carry_count > 0 ? `Day ${task.carry_count + 1}` : null;
 }
 
+/** Quiet row label for a task the extractor couldn't split (needs_review). Never prompts. */
+export const NEEDS_REVIEW_LABEL = 'Needs a look';
+export const NEEDS_REVIEW_CARD_TEXT = 'We saved one note as a single task. Tap to fix.';
+
+/** The task the passive review card points at: the first needs-review task in list order. */
+export function firstNeedingReview(tasks: Task[]): Task | null {
+  return tasks.find((t) => t.needs_review) ?? null;
+}
+
 export function taskMeta(task: Task, today: IsoDate): string {
   const parts = [formatMinutes(task.effort_min)];
   if (task.due_date !== null) {

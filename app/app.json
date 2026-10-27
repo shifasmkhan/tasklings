@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.example.tasklings",
+      "bundleIdentifier": "com.shifasmkhan.tasklings",
       "supportsTablet": false
     },
     "updates": {

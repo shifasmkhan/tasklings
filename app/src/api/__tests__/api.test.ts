@@ -1,5 +1,5 @@
 import { ApiError, toApiError } from '../errors';
-import { makeTask } from '../fixtures';
+import { makeTask, seedTasks } from '../fixtures';
 import { createMockApi } from '../mock';
 import { createSupabaseApi } from '../supabase';
 
@@ -129,9 +129,47 @@ describe('mock api', () => {
     ).rejects.toMatchObject({ code: 'protected_column' });
   });
 
+  it('seeds exactly one synthetic needs-review task', () => {
+    const flagged = seedTasks(TODAY).filter((t) => t.needs_review);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]?.status).toBe('open');
+    expect(seedTasks(TODAY).filter((t) => !t.needs_review).every((t) => t.needs_review === false)).toBe(true);
+  });
+
+  it('clears needs_review when the task is edited', async () => {
+    const api = createMockApi({
+      tasks: [
+        makeTask({ id: 'r1', title: 'Synthetic transcript task', kind: 'quick', needs_review: true }, TODAY),
+        makeTask({ id: 'r2', title: 'Synthetic other flagged', kind: 'quick', needs_review: true }, TODAY),
+      ],
+      today: () => TODAY,
+    });
+    expect((await api.todayTasks()).quick.find((t) => t.id === 'r1')?.needs_review).toBe(true);
+    const edited = await api.updateTask('r1', { title: 'Synthetic fixed title' });
+    expect(edited.needs_review).toBe(false);
+    expect(api.snapshot().find((t) => t.id === 'r1')?.needs_review).toBe(false);
+    // Only the edited task is cleared; completing another flagged task does not clear it.
+    await api.completeTask('r2');
+    expect(api.snapshot().find((t) => t.id === 'r2')?.needs_review).toBe(true);
+  });
+
+  it('a rejected edit leaves needs_review set', async () => {
+    const api = createMockApi({
+      tasks: [makeTask({ id: 'r1', title: 'Synthetic', kind: 'quick', needs_review: true }, TODAY)],
+      today: () => TODAY,
+    });
+    await expect(api.updateTask('r1', { title: '' })).rejects.toMatchObject({ code: 'invalid_argument' });
+    expect(api.snapshot()[0]?.needs_review).toBe(true);
+  });
+
+  it('requires a nonce to sign in', async () => {
+    const api = createMockApi({ tasks: [], today: () => TODAY });
+    await expect(api.signInWithApple('synthetic-token', '')).rejects.toMatchObject({ code: 'invalid_argument' });
+  });
+
   it('implements the remaining contracts', async () => {
     const api = createMockApi({ tasks: tasks(), today: () => TODAY });
-    expect((await api.signInWithApple('synthetic-token')).user_id).toBeTruthy();
+    expect((await api.signInWithApple('synthetic-token', 'synthetic-nonce')).user_id).toBeTruthy();
     expect(
       await api.processCapture({ capture_id: 'c1', transcript: 'synthetic', captured_at: `${TODAY}T09:00:00Z`, timezone: 'America/Chicago' }),
     ).toEqual({ capture_id: 'c1' });
@@ -164,6 +202,23 @@ describe('supabase stub', () => {
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://example.test/rest/v1/rpc/complete_task');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer jwt');
+  });
+
+  it('signs in by sending the raw nonce next to the identity token, never the hash', async () => {
+    const fetchImpl = fakeFetch(200, { access_token: 'jwt', expires_at: 1, user: { id: 'u1' } });
+    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => null, fetchImpl });
+    const session = await api.signInWithApple('apple-id-token', 'raw-nonce');
+    expect(session).toEqual({ access_token: 'jwt', user_id: 'u1', expires_at: 1 });
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://example.test/auth/v1/token?grant_type=id_token');
+    expect(JSON.parse(init.body as string)).toEqual({ provider: 'apple', id_token: 'apple-id-token', nonce: 'raw-nonce' });
+  });
+
+  it('refuses to sign in without a nonce and sends nothing', async () => {
+    const fetchImpl = fakeFetch(200, {});
+    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => null, fetchImpl });
+    await expect(api.signInWithApple('apple-id-token', '')).rejects.toMatchObject({ code: 'invalid_argument' });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('fails closed without a session', async () => {

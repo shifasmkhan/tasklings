@@ -76,10 +76,13 @@ export function createSupabaseApi(config: SupabaseConfig): ApiClient {
     request<T>(`/functions/v1/${name}`, { method: 'POST', body: body ?? {} });
 
   return {
-    async signInWithApple(identityToken: string): Promise<Session> {
+    async signInWithApple(identityToken: string, rawNonce: string): Promise<Session> {
+      if (!identityToken || !rawNonce) {
+        throw new ApiError('invalid_argument', 'Identity token and nonce are required', 400);
+      }
       const res = await request<{ access_token: string; expires_at: number; user: { id: string } }>(
         '/auth/v1/token?grant_type=id_token',
-        { method: 'POST', auth: false, body: { provider: 'apple', id_token: identityToken } },
+        { method: 'POST', auth: false, body: { provider: 'apple', id_token: identityToken, nonce: rawNonce } },
       );
       return { access_token: res.access_token, user_id: res.user.id, expires_at: res.expires_at };
     },

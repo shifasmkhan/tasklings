@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Task } from '@/api/types';
 import { MoonIcon } from '@/components/icons';
 import { MIN_TOUCH, usePalette } from '@/theme/colors';
-import { AllDone, DoneToday, GroupHeader, MicBar, StartHereCard, SummaryCard, UndoToast } from './parts';
+import { firstNeedingReview } from './logic';
+import { AllDone, DoneToday, GroupHeader, MicBar, ReviewCard, StartHereCard, SummaryCard, UndoToast } from './parts';
 import { TaskRow } from './TaskRow';
 import { useToday } from './useToday';
 
@@ -31,6 +32,8 @@ export function TodayScreen({ nav, now = new Date() }: { nav: TodayNavigation; n
   const [doneOpen, setDoneOpen] = useState(false);
   const [measuredBar, setMeasuredBar] = useState<number | null>(null);
   const barHeight = measuredBar ?? MIC_BAR_ESTIMATE + Math.max(insets.bottom, 12);
+
+  const reviewTask = firstNeedingReview(t.open);
 
   const handlers = {
     onComplete: t.complete,
@@ -72,6 +75,8 @@ export function TodayScreen({ nav, now = new Date() }: { nav: TodayNavigation; n
           </View>
         ) : (
           <>
+            {reviewTask ? <ReviewCard task={reviewTask} onOpen={nav.openTask} /> : null}
+
             <SummaryCard summary={t.summary} />
 
             {t.startHere ? (

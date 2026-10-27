@@ -9,7 +9,7 @@ import type { IsoDate, Task } from '@/api/types';
 import { CheckIcon } from '@/components/icons';
 import { MIN_TOUCH, usePalette, type Palette } from '@/theme/colors';
 import { completionHaptic, selectionHaptic } from './haptics';
-import { carriedLabel, taskMeta } from './logic';
+import { carriedLabel, NEEDS_REVIEW_LABEL, taskMeta } from './logic';
 
 export interface RowHandlers {
   onComplete: (task: Task) => void;
@@ -112,7 +112,7 @@ export function TaskRow({ task, today, first, onComplete, onTomorrow, onDrop, on
         </Pressable>
         <Pressable
           role="button"
-          aria-label={[task.title, meta, carried].filter(Boolean).join(', ')}
+          aria-label={[task.title, meta, task.needs_review ? NEEDS_REVIEW_LABEL : null, carried].filter(Boolean).join(', ')}
           accessibilityHint="Opens task details. Swipe up or down for more actions."
           accessibilityActions={[...ROW_ACTIONS, { name: 'activate' }]}
           onAccessibilityAction={onAccessibilityAction}
@@ -122,6 +122,9 @@ export function TaskRow({ task, today, first, onComplete, onTomorrow, onDrop, on
           <View style={styles.bodyText}>
             <Text style={[styles.title, { color: p.text }]}>{task.title}</Text>
             <Text style={[styles.meta, { color: p.secondaryText }]}>{meta}</Text>
+            {task.needs_review ? (
+              <Text style={[styles.meta, { color: p.secondaryText }]}>{NEEDS_REVIEW_LABEL}</Text>
+            ) : null}
           </View>
           {carried ? (
             <View style={[styles.carried, { backgroundColor: p.fill }]}>

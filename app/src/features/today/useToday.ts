@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo } from 'react-native';
 
 import { useApi } from '@/api/ApiProvider';
 import { isApiError } from '@/api/errors';
@@ -8,6 +9,12 @@ import { logEvent } from '@/lib/log';
 import { groupTasks, pickStartHere, summarize } from './logic';
 
 export const UNDO_WINDOW_MS = 5000;
+/** Longer window while VoiceOver is on: a dropped task can only come back through Undo. */
+export const UNDO_WINDOW_SCREEN_READER_MS = 10000;
+
+export function undoWindowMs(screenReaderEnabled: boolean): number {
+  return screenReaderEnabled ? UNDO_WINDOW_SCREEN_READER_MS : UNDO_WINDOW_MS;
+}
 
 export type TaskAction = 'complete' | 'tomorrow' | 'drop';
 
@@ -22,7 +29,7 @@ type LoadState = 'loading' | 'ready' | 'error';
 
 /**
  * State for the Today screen. Actions are optimistic: the row moves at once, the RPC runs,
- * and a failure puts it back. Every action offers Undo for 5 seconds (US-09), which calls undo_task.
+ * and a failure puts it back. Every action offers Undo for 5 seconds, or 10 with VoiceOver on (US-09), which calls undo_task.
  */
 export function useToday(today: string = localIsoDate()) {
   const api = useApi();
@@ -34,6 +41,25 @@ export function useToday(today: string = localIsoDate()) {
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastKey = useRef(0);
+  // Whether a screen reader (VoiceOver) is running; read when a toast starts, kept current by a listener.
+  const screenReader = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    void AccessibilityInfo.isScreenReaderEnabled().then(
+      (enabled) => {
+        if (active) screenReader.current = enabled;
+      },
+      () => undefined,
+    );
+    const sub = AccessibilityInfo.addEventListener('screenReaderChanged', (enabled) => {
+      screenReader.current = enabled;
+    });
+    return () => {
+      active = false;
+      sub.remove();
+    };
+  }, []);
 
   const clearToastTimer = () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -44,7 +70,7 @@ export function useToday(today: string = localIsoDate()) {
     clearToastTimer();
     toastKey.current += 1;
     setToast({ key: toastKey.current, message, undo });
-    toastTimer.current = setTimeout(() => setToast(null), UNDO_WINDOW_MS);
+    toastTimer.current = setTimeout(() => setToast(null), undoWindowMs(screenReader.current));
   }, []);
 
   const dismissToast = useCallback(() => {
