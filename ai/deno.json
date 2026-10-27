@@ -1,0 +1,10 @@
+{
+  "// note": "Used only by `deno check src/extraction/mod.ts` in CI, to prove the extraction module type-checks in the edge-function runtime with Deno's own libs (no Node types).",
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "nodeModulesDir": "none",
+  "lock": false
+}

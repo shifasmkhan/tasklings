@@ -1,0 +1,24 @@
+{
+  "name": "@tasklings/ai",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Tasklings task extraction prompt, schema validator and eval harness (US-03)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check:deno": "deno check src/extraction/mod.ts deno/smoke.ts && deno run --no-prompt deno/smoke.ts",
+    "eval": "node evals/cli.ts",
+    "eval:dry": "node evals/cli.ts --dry-run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.133.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "typescript": "5.9.3"
+  }
+}
