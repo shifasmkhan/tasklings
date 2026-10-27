@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Keeps the SHA-pinned actions in CI current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Don't propose versions newer than 7 days: most malicious releases are caught by then.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  # Add npm (/app), pip (/ai) and Deno entries when those projects exist.
