@@ -25,9 +25,13 @@ test("accepts null due_date and surrounding whitespace", () => {
   assert.deepEqual(rawCodes(`\n  ${JSON.stringify({ tasks: [{ ...good, due_date: null }] })}  \n`), []);
 });
 
-test("accepts 10 tasks, rejects 0 and 11", () => {
+test("accepts 0 to 10 tasks, rejects 11", () => {
   assert.deepEqual(codes({ tasks: Array(10).fill(good) }), []);
-  assert.deepEqual(codes({ tasks: [] }), ["no_tasks"]);
+  assert.deepEqual(codes({ tasks: [] }), []);
+  assert.deepEqual(rawCodes('{"tasks":[]}'), []);
+  assert.deepEqual(codes({ tasks: {} }), ["tasks_not_array"]);
+  assert.deepEqual(codes({}), ["missing_field"]);
+  assert.deepEqual(codes({ tasks: [], extra: 1 }), ["extra_field"]);
   assert.deepEqual(codes({ tasks: Array(11).fill(good) }), ["too_many_tasks"]);
 });
 

@@ -2,7 +2,7 @@
 //
 // The model must return exactly this shape (PRD "Task extraction output"):
 //   {"tasks":[{"title":string,"kind":"quick"|"errand"|"project","effort_min":int,"due_date":"YYYY-MM-DD"|null}]}
-// Rules: 1-10 tasks; title <= 60 chars, imperative; effort_min 1-480; no extra fields.
+// Rules: 0-10 tasks ({"tasks":[]} is a valid answer for a note with nothing to do); title <= 60 chars, imperative; effort_min 1-480; no extra fields.
 //
 // This file is dependency-free and uses only web-standard APIs so it can be
 // imported unchanged by the process-capture edge function (Deno).
@@ -11,7 +11,7 @@ export const TASK_KINDS = ["quick", "errand", "project"] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
 export const LIMITS = {
-  minTasks: 1,
+  minTasks: 0,
   maxTasks: 10,
   maxTitleChars: 60,
   minEffortMin: 1,

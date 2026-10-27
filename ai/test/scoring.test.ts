@@ -67,6 +67,10 @@ test("accuracy = correct / (expected + extra); empty notes score 1 unit", () => 
   assert.deepEqual([hallucinated.correct_units, hallucinated.units], [0, 1]);
   const missed = scoreNote("d", e, [], [[], []]);
   assert.deepEqual([missed.correct_units, missed.units, missed.missed], [0, 2, 2]);
+  const fellBack = scoreNote("e", [], [], [], { fellBack: true });
+  assert.deepEqual([fellBack.correct_units, fellBack.units, fellBack.extra, fellBack.exact], [0, 1, 1, false], "a fallback is not a correct empty result");
+  const fellBackNonEmpty = scoreNote("f", e, [], [[], []], { fellBack: true });
+  assert.deepEqual([fellBackNonEmpty.units, fellBackNonEmpty.extra, fellBackNonEmpty.missed], [2, 0, 2]);
   const agg = aggregate([s1, empty, hallucinated, missed]);
   assert.equal(agg.accuracy, 3 / 7);
   assert.equal(agg.meets_target, false);

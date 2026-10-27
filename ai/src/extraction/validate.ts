@@ -13,7 +13,6 @@ export type ValidationCode =
   | "missing_field"
   | "extra_field"
   | "tasks_not_array"
-  | "no_tasks"
   | "too_many_tasks"
   | "task_not_object"
   | "title_type"
@@ -166,7 +165,6 @@ export function validateExtraction(value: unknown): ValidationResult {
     if (!Array.isArray(tasks)) {
       errors.push({ code: "tasks_not_array", path: "/tasks" });
     } else {
-      if (tasks.length < LIMITS.minTasks) errors.push({ code: "no_tasks", path: "/tasks" });
       if (tasks.length > LIMITS.maxTasks) errors.push({ code: "too_many_tasks", path: "/tasks" });
       // Validate at most maxTasks + 1 items: enough to report, bounded work.
       tasks.slice(0, LIMITS.maxTasks + 1).forEach((t, i) => validateTask(t, `/tasks/${i}`, errors));

@@ -46,7 +46,7 @@ Each run writes `ai/runs/<run-id>/scorecard.json`, `scorecard.md` (IDs and count
 
 Exactly `{"tasks":[{"title","kind","effort_min","due_date"}]}`, and the whole reply must be that object: no prose, no code fences, at most 8,000 characters.
 
-- 1–10 tasks; no extra or missing keys at either level (including `__proto__`).
+- 0–10 tasks (`{"tasks":[]}` is valid: the note had nothing for the speaker to do); no extra or missing keys at either level (including `__proto__`).
 - `title`: a non-empty string with no leading or trailing spaces, at most 60 Unicode code points (what Postgres `char_length` counts). It must not contain control, zero-width or bidi-override characters, URLs or bare domains, email addresses, or phone-like digit runs (7 or more digits). These content rules go further than the PRD; see "Needs a PRD decision".
 - `kind`: one of `quick`, `errand`, `project`.
 - `effort_min`: an integer from 1 to 480.
@@ -54,7 +54,7 @@ Exactly `{"tasks":[{"title","kind","effort_min","due_date"}]}`, and the whole re
 
 Errors carry a stable code and a JSON path, never model text.
 
-**Pipeline.** One call; if the output is invalid, retry once with only the validator codes appended (the bad output is never fed back to the model); if it is still invalid, fall back to one fixed task (`Review this voice note`, quick, 5 min) with `flaggedForReview: true`. The fallback title is fixed so a hostile note can't shape it. An empty transcript or one over 20,000 characters skips the model.
+**Pipeline.** One call; if the output is invalid, retry once with only the validator codes appended (the bad output is never fed back to the model); if it is still invalid, fall back to one fixed task (`Review this voice note`, quick, 5 min) with `needsReview: true` (the backend maps it to `tasks.needs_review`). The fallback title is fixed so a hostile note can't shape it. A valid empty list is not a failure: it returns `status: "ok"` with no tasks and `needsReview: false`, with no retry, and the backend saves no task for that capture. An empty transcript or one over 20,000 characters skips the model.
 
 **Prompt.** Only the current transcript, today's local date with its weekday, and the user's IANA time zone go to the model. The transcript is JSON-encoded, with `<`, `>`, U+2028 and U+2029 escaped, inside `<transcript-{random nonce}>` tags, so it can't close or forge the delimiter. The system prompt says the transcript is untrusted data, that the model has no other tasks or profile data, and that it may only return the schema. The time zone is checked against IANA syntax and `Intl` before use.
 
@@ -71,7 +71,7 @@ A produced task is **correct** when it matches an expected task on all four chec
 
 **Matching.** Produced and expected tasks are paired one-to-one. Only pairs the grader says mean the same thing can be paired. The pairing maximises first the number of pairs, then the number of passing exact checks (an exact search over subsets, which is cheap at 10 or fewer tasks).
 
-**Accuracy** = correct tasks ÷ (expected tasks + extra produced tasks). Missed and invented tasks both count against it. A note with no real tasks counts as one unit: correct if nothing was extracted, otherwise each invented task is one wrong unit. When the pipeline falls back, the fixed review task counts as nothing extracted. **Target: 90%.**
+**Accuracy** = correct tasks ÷ (expected tasks + extra produced tasks). Missed and invented tasks both count against it. A note with no real tasks (expected `[]`) counts as one unit: a correct empty result is correct, and each invented task is an extra (one wrong unit). When the pipeline falls back, the fixed review task is not an extraction, but on a no-task note the fallback still counts as one wrong unit, so it never passes as a correct empty result. **Target: 90%.**
 
 The scorecard also reports meaning recall and precision; kind, date and band accuracy among matched pairs; accuracy by tag; schema violations by code; and fallbacks by reason.
 
@@ -93,7 +93,6 @@ A fallback counts as a pass (safe failure) and is counted separately. Rejected r
 
 ## Needs a PRD decision
 
-1. **Notes with no tasks.** The contract needs 1–10 tasks, so a note with nothing actionable can't be valid output. The model is told to return `{"tasks":[]}`. The pipeline treats that as `no_tasks` and goes straight to the flagged fallback without the retry: retrying only pushes the model to invent a task. Proposed alternative: allow an empty list and skip saving any task.
-2. **Where "flagged for review" is stored.** The data model has no flag column. The pipeline returns `flaggedForReview: true` and a fixed title. Backend needs a defined place for the flag, for example `captures.status`/`error` or a `tasks.notes` marker.
-3. **Validator content rules beyond the PRD.** Titles with URLs, emails, phone numbers or control/bidi characters are rejected, which leads to a retry and then the fallback. The PRD only says "≤60 chars, imperative". Phone numbers and URLs belong in `task_enrichments`, not in titles.
-4. **Relative-date conventions.** The prompt fixes the ambiguous cases: a weekday name means the next one after today; "next week" means `null`; "this weekend" means Saturday. These should be recorded so the iOS copy and QA agree.
+Resolved by the owner (to be recorded in the PRD Decisions table): extraction returns 0–10 tasks and `{"tasks":[]}` is valid; the fallback flag is `needsReview`, stored as `tasks.needs_review`; the relative-date conventions in the prompt (a weekday name means the next one after today, "this weekend" means Saturday, "next week" means `null`).
+
+1. **Validator content rules beyond the PRD.** Titles with URLs, emails, phone numbers or control/bidi characters are rejected, which leads to a retry and then the fallback. The PRD only says "≤60 chars, imperative". Phone numbers and URLs belong in `task_enrichments`, not in titles.

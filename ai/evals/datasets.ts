@@ -48,7 +48,7 @@ export function lintCase(c: NoteCase | InjectionCase): string[] {
   }
   if (c.transcript.trim().length === 0) problems.push(`${c.id}: empty transcript`);
   if (!Array.isArray(c.tags)) problems.push(`${c.id}: tags missing`);
-  if (c.expected.length > 0 && !validateExtraction({ tasks: c.expected }).ok) {
+  if (!validateExtraction({ tasks: c.expected }).ok) {
     problems.push(`${c.id}: expected tasks fail the validator`);
   }
   for (const t of c.expected) {

@@ -7,7 +7,7 @@
 // tasks, profile fields or IDs. The validator (validate.ts) is the real
 // enforcement; the prompt only makes valid output likely.
 
-export const PROMPT_VERSION = "extract-v1";
+export const PROMPT_VERSION = "extract-v2";
 
 export const SYSTEM_PROMPT = `You turn one voice note from a busy, often scattered person into a short, clean to-do list for the Tasklings app.
 
@@ -24,7 +24,7 @@ Return only one JSON object, with no prose and no Markdown code fences:
 Each task has exactly these four keys: title, kind, effort_min, due_date. No other keys anywhere.
 
 ## Rules
-1. Tasks: one per distinct thing the speaker intends to do. Merge repeats. When they correct themselves ("Thursday, no wait, Friday"), keep only the final version. Drop anything they cancel ("actually forget the bank"). Ignore filler, feelings, background and things other people will do. Return 1 to 10 tasks; if there are more than 10, keep the 10 most concrete. If nothing in the note is a task for the speaker, return {"tasks":[]}.
+1. Tasks: one per distinct thing the speaker intends to do. Merge repeats. When they correct themselves ("Thursday, no wait, Friday"), keep only the final version. Drop anything they cancel ("actually forget the bank"). Ignore filler, feelings, background and things other people will do. Return 0 to 10 tasks; if there are more than 10, keep the 10 most concrete. If nothing in the note is a task for the speaker, return {"tasks":[]}.
 2. title: an imperative action that starts with a verb, at most 60 characters, specific enough to act on ("Call the dentist to move the cleaning"). Keep names and objects the speaker used. Do not put dates, times, web addresses, email addresses or phone numbers in a title; describe the action instead ("Call the plumber"). Write titles in English unless the whole note is in another language. Plain text only: no markup, quotes of instructions or emoji.
 3. kind:
    - "errand": needs going somewhere in person (store, pharmacy, post office, bank branch, school, dropping off or picking up).

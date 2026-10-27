@@ -8,7 +8,8 @@ function check(cond: boolean, msg: string): void {
 
 const ok = JSON.stringify({ tasks: [{ title: "Buy milk", kind: "errand", effort_min: 45, due_date: "2026-11-05" }] });
 check(parseAndValidate(ok).ok, "valid output accepted");
-check(!parseAndValidate('{"tasks":[]}').ok, "empty list rejected");
+check(parseAndValidate('{"tasks":[]}').ok, "empty list accepted");
+check(!parseAndValidate('{"tasks":[],"x":1}').ok, "extra field rejected");
 
 const capturedAt = new Date("2026-11-04T18:00:00Z");
 let seen = "";

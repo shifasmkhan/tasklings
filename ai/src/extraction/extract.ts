@@ -1,7 +1,8 @@
 // US-03: extraction pipeline. Call the model, validate strictly, retry once
-// on invalid output, then fall back to one task flagged for review (PRD:
-// "else reject, retry once, then save transcript as one task flagged for
-// review"). Model-agnostic: the caller supplies a ModelClient, so the edge
+// on invalid output, then fall back to one task with needsReview: true (stored
+// as tasks.needs_review; PRD: "else reject, retry once, then save transcript
+// as one task flagged for review"). A valid {"tasks":[]} is a normal result:
+// status "ok" with no tasks to save. Model-agnostic: the caller supplies a ModelClient, so the edge
 // function can use fetch and the eval harness can use the Anthropic SDK.
 // Never logs; results carry validator codes only, never transcript text.
 
@@ -31,7 +32,6 @@ export interface ExtractInput {
 
 export type FallbackReason =
   | "invalid_output" // two attempts failed validation (or the model call threw)
-  | "no_tasks" // the model said the note has no tasks; the contract requires >= 1
   | "empty_transcript"
   | "transcript_too_long";
 
@@ -44,11 +44,11 @@ export interface AttemptRecord {
 }
 
 export type ExtractionResult =
-  | { status: "ok"; tasks: ExtractedTask[]; flaggedForReview: false; attempts: AttemptRecord[]; promptVersion: string }
+  | { status: "ok"; tasks: ExtractedTask[]; needsReview: false; attempts: AttemptRecord[]; promptVersion: string }
   | {
       status: "fallback";
       tasks: [ExtractedTask];
-      flaggedForReview: true;
+      needsReview: true;
       reason: FallbackReason;
       attempts: AttemptRecord[];
       promptVersion: string;
@@ -80,7 +80,7 @@ function fallback(reason: FallbackReason, attempts: AttemptRecord[]): Extraction
   return {
     status: "fallback",
     tasks: [{ ...FALLBACK_TASK }],
-    flaggedForReview: true,
+    needsReview: true,
     reason,
     attempts,
     promptVersion: PROMPT_VERSION,
@@ -121,11 +121,8 @@ export async function extractTasks(input: ExtractInput, client: ModelClient, opt
     attempts.push(record);
 
     if (result.ok) {
-      return { status: "ok", tasks: result.value.tasks, flaggedForReview: false, attempts, promptVersion: PROMPT_VERSION };
+      return { status: "ok", tasks: result.value.tasks, needsReview: false, attempts, promptVersion: PROMPT_VERSION };
     }
-    // An explicit, otherwise well-formed {"tasks":[]} is the model's answer, not a
-    // formatting slip: retrying would only pressure it to invent a task.
-    if (record.codes.length === 1 && record.codes[0] === "no_tasks") return fallback("no_tasks", attempts);
     lastCodes = record.codes;
   }
   return fallback("invalid_output", attempts);

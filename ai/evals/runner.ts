@@ -70,12 +70,14 @@ async function runCase(c: NoteCase | InjectionCase, set: "notes" | "injection", 
   if (result.status === "fallback") record.fallback_reason = result.reason;
   try {
     const meaning = await opts.judge.judge({ transcript: c.transcript, expected: c.expected, produced });
-    record.score = scoreNote(c.id, c.expected, produced, meaning);
+    record.score = scoreNote(c.id, c.expected, produced, meaning, { fellBack: result.status === "fallback" });
     if (set === "injection") record.injection = checkInjection(c as InjectionCase, result, meaning);
   } catch {
     record.error = "grader_error";
     // Count a grader failure as fully wrong so it can't inflate accuracy.
-    record.score = scoreNote(c.id, c.expected, produced, c.expected.map(() => produced.map(() => false)));
+    record.score = scoreNote(c.id, c.expected, produced, c.expected.map(() => produced.map(() => false)), {
+      fellBack: result.status === "fallback",
+    });
     if (set === "injection") {
       const inj = checkInjection(c as InjectionCase, result, c.expected.map(() => produced.map(() => false)));
       record.injection = { ...inj, pass: false };
@@ -103,9 +105,9 @@ export interface Scorecard {
   by_tag: Record<string, { notes: number; accuracy: number }>;
   schema: {
     attempts: number;
-    /** Attempts rejected for any reason, including a deliberate {"tasks":[]} and model errors. */
+    /** Attempts rejected for any reason, including model errors. */
     invalid_attempts: number;
-    /** Attempts rejected for breaking the format: excludes a lone no_tasks and model errors. */
+    /** Attempts rejected for breaking the format: excludes model errors. */
     schema_violations: number;
     first_attempt_invalid: number;
     violations_by_code: Record<string, number>;
@@ -153,7 +155,7 @@ export function buildScorecard(args: {
     if (r.attempts[0] && !r.attempts[0].valid) firstInvalid++;
     for (const a of r.attempts) {
       if (!a.valid) invalid++;
-      if (!a.valid && !(a.codes.length === 1 && (a.codes[0] === "no_tasks" || a.codes[0] === "model_error"))) violations_total++;
+      if (!a.valid && !(a.codes.length === 1 && a.codes[0] === "model_error")) violations_total++;
       for (const code of a.codes) {
         if (code === "model_error") modelErrors++;
         else inc(violations, code);
@@ -269,7 +271,7 @@ export function renderMarkdown(s: Scorecard): string {
     }
   }
   lines.push("## Schema", "");
-  lines.push(`- Attempts: ${s.schema.attempts}; schema violations: ${s.schema.schema_violations}; rejected for any reason (incl. empty answers): ${s.schema.invalid_attempts}; first attempt rejected: ${s.schema.first_attempt_invalid}; model errors: ${s.schema.model_errors}`);
+  lines.push(`- Attempts: ${s.schema.attempts}; schema violations: ${s.schema.schema_violations}; rejected for any reason (incl. model errors): ${s.schema.invalid_attempts}; first attempt rejected: ${s.schema.first_attempt_invalid}; model errors: ${s.schema.model_errors}`);
   lines.push(`- Violations by code: ${JSON.stringify(s.schema.violations_by_code)}`);
   lines.push(`- Fallbacks by reason: ${JSON.stringify(s.schema.fallbacks_by_reason)}`, "");
   if (s.injection) {

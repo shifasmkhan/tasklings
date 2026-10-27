@@ -22,6 +22,9 @@ test("note set covers the required situations", () => {
   const tags = notes.notes.flatMap((n) => n.tags);
   const count = (tag: string) => tags.filter((t) => t === tag).length;
   assert.ok(count("zero_tasks") >= 4, "notes with zero real tasks");
+  for (const n of notes.notes) {
+    assert.equal(n.tags.includes("zero_tasks"), n.expected.length === 0, `${n.id}: zero_tasks tag iff expected is []`);
+  }
   assert.ok(count("mixed_language") >= 3, "mixed-language notes");
   assert.ok(count("self_correction") >= 4, "self-corrections");
   assert.ok(count("multi") >= 10, "multiple tasks per note");
@@ -204,4 +207,31 @@ test("a sloppy model is scored down, not up", async () => {
   assert.equal(card.accuracy?.kind, 0);
   assert.ok((card.accuracy?.accuracy ?? 1) < 0.2, "only the empty notes score");
   assert.equal(card.pass, false);
+});
+
+test("zero-task notes: [] is correct, an invented task is an extra, a fallback is wrong", async () => {
+  const zero = notes.notes.filter((n) => n.expected.length === 0);
+  assert.ok(zero.length >= 4);
+  const judge = new LexicalJudge();
+  const run = async (reply: string | Error) => {
+    const opts = {
+      clientFor: (): ModelClient => ({ complete: () => (reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply)) }),
+      judge,
+      concurrency: 4,
+      keepRaw: false,
+    };
+    return runSet(zero, "notes", opts);
+  };
+  for (const r of await run('{"tasks":[]}')) {
+    assert.equal(r.status, "ok", r.id);
+    assert.deepEqual([r.score?.correct_units, r.score?.units, r.score?.extra], [1, 1, 0], r.id);
+  }
+  const invented = JSON.stringify({ tasks: [{ title: "Plan something", kind: "quick", effort_min: 5, due_date: null }] });
+  for (const r of await run(invented)) {
+    assert.deepEqual([r.score?.correct_units, r.score?.units, r.score?.extra], [0, 1, 1], r.id);
+  }
+  for (const r of await run("not json")) {
+    assert.equal(r.status, "fallback", r.id);
+    assert.deepEqual([r.score?.correct_units, r.score?.units, r.score?.extra], [0, 1, 1], r.id);
+  }
 });

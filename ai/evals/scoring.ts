@@ -122,20 +122,31 @@ export interface NoteScore {
 
 /**
  * Scores one note. `produced` must be the extracted tasks only: pass [] when
- * the pipeline fell back (the fixed review task is not an extraction).
+ * the pipeline fell back (the fixed review task is not an extraction) and set
+ * `fellBack`. A correct empty result ({"tasks":[]} for a note with no tasks)
+ * is one correct unit; every invented task is an extra. A fallback is never a
+ * correct empty result: on a note with no tasks it saves a review task nobody
+ * asked for, so it scores as one extra.
  */
-export function scoreNote(id: string, expected: ExtractedTask[], produced: ExtractedTask[], meaning: MeaningMatrix): NoteScore {
+export function scoreNote(
+  id: string,
+  expected: ExtractedTask[],
+  produced: ExtractedTask[],
+  meaning: MeaningMatrix,
+  opts: { fellBack?: boolean } = {},
+): NoteScore {
   const pairs = matchTasks(expected, produced, meaning);
   const correct = pairs.filter((p) => p.correct).length;
-  const extra = produced.length - pairs.length;
+  const fallbackExtra = opts.fellBack && expected.length === 0 ? 1 : 0;
+  const extra = produced.length - pairs.length + fallbackExtra;
   const missed = expected.length - pairs.length;
-  const emptyAndRight = expected.length === 0 && produced.length === 0;
+  const emptyAndRight = expected.length === 0 && produced.length === 0 && !opts.fellBack;
   const units = emptyAndRight ? 1 : expected.length + extra;
   const correct_units = emptyAndRight ? 1 : correct;
   return {
     id,
     expected_count: expected.length,
-    produced_count: produced.length,
+    produced_count: produced.length + fallbackExtra,
     matched: pairs.length,
     correct,
     missed,
