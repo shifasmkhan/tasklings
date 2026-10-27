@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { IsoDate, Task } from '@/api/types';
+import type { PendingCapture } from '@/features/capture/captureStore';
 import { CheckIcon, MicIcon } from '@/components/icons';
 import { MIN_TOUCH, usePalette } from '@/theme/colors';
 import { completionHaptic } from './haptics';
@@ -32,6 +33,47 @@ export function ReviewCard({ task, onOpen }: { task: Task; onOpen: (task: Task) 
     >
       <Text style={[styles.secondary15, { color: p.text }]}>{NEEDS_REVIEW_CARD_TEXT}</Text>
     </Pressable>
+  );
+}
+
+export const SORTING_LABEL = 'Sorting your note…';
+export const QUEUED_LABEL = 'Saved on this device';
+export const QUEUED_DETAIL = 'We’ll sort it when you’re back online.';
+export const FAILED_LABEL = 'Couldn’t sort your note';
+
+/**
+ * A capture that hasn't turned into tasks yet (US-03). A typed note shows its text straight away,
+ * even when the request is queued offline.
+ */
+export function PendingRow({ capture, onRetry }: { capture: PendingCapture; onRetry: (id: string) => void }) {
+  const p = usePalette();
+  const queued = capture.status === 'queued';
+  const failed = capture.status === 'failed';
+  const label = failed ? FAILED_LABEL : queued ? QUEUED_LABEL : SORTING_LABEL;
+  return (
+    <View
+      role="status"
+      aria-live="polite"
+      accessible
+      aria-label={[label, queued ? QUEUED_DETAIL : null, capture.text].filter(Boolean).join('. ')}
+      style={[styles.card, styles.pending, { backgroundColor: p.card }]}
+    >
+      {failed || queued ? null : <ActivityIndicator color={p.accent} accessibilityElementsHidden />}
+      <View style={styles.pendingText}>
+        <Text style={[styles.pendingTitle, { color: p.text }]}>{label}</Text>
+        {queued ? <Text style={[styles.secondary15, { color: p.secondaryText }]}>{QUEUED_DETAIL}</Text> : null}
+        {capture.text ? (
+          <Text numberOfLines={2} style={[styles.secondary15, { color: p.secondaryText }]}>
+            {capture.text}
+          </Text>
+        ) : null}
+      </View>
+      {failed ? (
+        <Pressable role="button" aria-label="Try again" onPress={() => onRetry(capture.capture_id)} style={styles.toastButton}>
+          <Text style={[styles.toastAction, { color: p.accent }]}>Try again</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -288,6 +330,9 @@ const styles = StyleSheet.create({
   listCard: { borderRadius: 14, overflow: 'hidden' },
   summary: { gap: 14 },
   review: { minHeight: MIN_TOUCH, justifyContent: 'center' },
+  pending: { minHeight: MIN_TOUCH, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  pendingText: { flex: 1, gap: 2 },
+  pendingTitle: { fontSize: 17, fontWeight: '500' },
   gap4: { gap: 4 },
   gap8: { gap: 8 },
   center: { textAlign: 'center' },
