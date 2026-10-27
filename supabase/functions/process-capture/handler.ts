@@ -2,6 +2,8 @@
 // Request:  POST {capture_id, transcript, captured_at, timezone}
 // Response: 202 {capture_id}; tasks arrive by realtime on public.tasks.
 //
+// An extraction result with zero tasks is valid: the capture goes to done and no task is created.
+//
 // Phase 0 stub: no model call. It records the capture and inserts canned synthetic tasks so the
 // app's realtime path can be built end to end. Everything runs with the caller's JWT (RLS).
 // captured_at and timezone are validated and reserved for the real pipeline, which needs them to
@@ -45,6 +47,10 @@ export const STUB_TASKS: readonly ExtractedTask[] = [
   { title: "Pick up the sample parcel", kind: "errand", effort_min: 20, due_date: null },
 ];
 
+/** The extraction output may hold zero tasks (e.g. a transcript with nothing actionable). */
+export const MIN_EXTRACTED_TASKS = 0;
+export const MAX_EXTRACTED_TASKS = 10;
+
 export type InsertCaptureResult = "created" | "exists" | "conflict";
 
 /** Data access, bound to the caller's JWT. */
@@ -59,6 +65,8 @@ export interface Deps {
   store: (token: string) => CaptureStore;
   now: () => Date;
   log: Logger;
+  /** Test switch for the stub: pretend extraction found no tasks. Never set in production. */
+  stubEmpty?: boolean;
 }
 
 const FIELDS = ["capture_id", "transcript", "captured_at", "timezone"] as const;
@@ -108,7 +116,9 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
       return json(202, { capture_id: input.capture_id });
     }
     try {
-      const n = await store.insertTasks(input.capture_id, STUB_TASKS);
+      // Zero extracted tasks is valid: the capture still ends as done, with nothing to insert.
+      const tasks = deps.stubEmpty ? [] : STUB_TASKS;
+      const n = tasks.length > 0 ? await store.insertTasks(input.capture_id, tasks) : 0;
       await store.setCaptureStatus(input.capture_id, "done");
       deps.log("capture_processed", {
         fn: "process-capture",

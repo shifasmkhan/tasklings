@@ -4,7 +4,9 @@ import {
   createHandler,
   type ExtractedTask,
   type InsertCaptureResult,
+  MAX_EXTRACTED_TASKS,
   MAX_TRANSCRIPT_CHARS,
+  MIN_EXTRACTED_TASKS,
   STUB_TASKS,
 } from "../process-capture/handler.ts";
 import { errorCode, fakeGetUser, NOW, post, recordingLog, tokenFor } from "./helpers.ts";
@@ -32,10 +34,16 @@ function fakeStore(result: InsertCaptureResult = "created") {
   return { calls, tokens, tasks, factory };
 }
 
-function handler(store = fakeStore()) {
+function handler(store = fakeStore(), stubEmpty = false) {
   const rec = recordingLog();
   return {
-    h: createHandler({ getUser: fakeGetUser(), store: store.factory, now: () => NOW, log: rec.log }),
+    h: createHandler({
+      getUser: fakeGetUser(),
+      store: store.factory,
+      now: () => NOW,
+      log: rec.log,
+      stubEmpty,
+    }),
     store,
     rec,
   };
@@ -55,13 +63,29 @@ Deno.test("process-capture: valid request returns 202 {capture_id} and inserts c
 });
 
 Deno.test("process-capture: canned tasks satisfy the extraction schema", () => {
-  assert.ok(STUB_TASKS.length >= 1 && STUB_TASKS.length <= 10);
+  assert.ok(STUB_TASKS.length >= MIN_EXTRACTED_TASKS && STUB_TASKS.length <= MAX_EXTRACTED_TASKS);
   for (const t of STUB_TASKS) {
     assert.deepEqual(Object.keys(t).sort(), ["due_date", "effort_min", "kind", "title"]);
     assert.ok(t.title.length > 0 && t.title.length <= 60);
     assert.ok(["quick", "errand", "project"].includes(t.kind));
     assert.ok(Number.isInteger(t.effort_min) && t.effort_min >= 1 && t.effort_min <= 480);
   }
+});
+
+Deno.test("process-capture: zero extracted tasks is valid: 202, capture done, no tasks created", async () => {
+  const { h, store, rec } = handler(fakeStore(), true);
+  const res = await h(post("process-capture", VALID, tokenFor()));
+  assert.equal(res.status, 202);
+  assert.deepEqual(await res.json(), { capture_id: CAPTURE_ID });
+  assert.deepEqual(store.calls, [`capture:${CAPTURE_ID}`, "status:done"]);
+  assert.deepEqual(store.tasks, []);
+  assert.ok(rec.events.some((e) => JSON.stringify(e).includes('"tasks":0')));
+  assert.ok(!JSON.stringify(rec.events).includes("synthetic transcript"));
+});
+
+Deno.test("process-capture: extraction may hold 0 to 10 tasks", () => {
+  assert.equal(MIN_EXTRACTED_TASKS, 0);
+  assert.equal(MAX_EXTRACTED_TASKS, 10);
 });
 
 Deno.test("process-capture: duplicate capture_id from the same user is idempotent", async () => {

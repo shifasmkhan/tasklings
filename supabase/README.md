@@ -9,8 +9,8 @@ Rules from the security review: edge functions query Postgres with the caller's 
 | Path | What |
 |---|---|
 | `config.toml` | Local/CI Supabase config. Only `public` is exposed through the API. |
-| `migrations/` | Schema (`0100`), contract additions awaiting approval (`0200`), task RPCs (`0300`), rollover job (`0400`), realtime (`0500`). |
-| `tests/database/` | pgTAP: RLS and privileges, every RPC as the owner and as another user, rollover with time-zone changes. |
+| `migrations/` | Schema (`0100`), contract additions approved 2026-10-27 (`0200`: `last_rollover_on`, `undo_planned_for`, `needs_review`), task RPCs (`0300`), rollover job (`0400`), realtime (`0500`). |
+| `tests/database/` | pgTAP: RLS and privileges, every RPC as the owner and as another user, rollover with time-zone changes, `needs_review`. |
 | `functions/` | Deno edge functions: `process-capture`, `register-device`, `export-data`, `delete-account`, shared code in `_shared/`, tests in `tests/`. |
 | `seed.sql` | Synthetic local data (two `example.test` users). |
 | `package.json` | Pins the Supabase CLI and Deno; `package-lock.json` holds the integrity hashes. |
@@ -33,6 +33,7 @@ CI runs both on every PR with no secrets (`.github/workflows/ci.yml`).
 - Supabase's default "grant all" is revoked and access is granted back per column.
 - **Task edits**: clients may update only `title, kind, effort_min, due_date, notes`. `status, planned_for, completed_at, dropped_reason` change only inside the task RPCs: the RPCs run as the caller (SECURITY INVOKER), so they need the column grant, and a trigger rejects those columns unless the RPC set a transaction-local flag. A client can't set the flag: PostgREST runs one statement per request and doesn't expose `set_config`. `effort_min_initial, carry_count, user_id, capture_id, first_planned_for` have no client update grant at all. On insert the database sets `planned_for` (the user's today), `first_planned_for` and `effort_min_initial` (= `effort_min`).
 - **`apple_refresh_token`** is stored in `public.apple_credentials`, a table only the service role can read (no grants for clients, and RLS with no policies). We chose a separate table over column privileges on `profiles` so no future grant, view, `select *` or realtime publication on `profiles` can expose it. It holds ciphertext; the key lives outside the database. Only `delete-account` reads it.
+- **`needs_review`** (`tasks.needs_review boolean not null default false`) marks the single task process-capture saves when extraction fell back to the raw transcript. Clients can read it but have no insert or update grant on it, and the insert trigger forces it to false for client roles. Only a server-side writer can set it to true. A trigger clears it to false whenever title, kind, effort_min, due_date or notes change (any role), so the first edit confirms the task. Changing nothing, or using the task RPCs (defer, complete, drop, undo), leaves it alone. Tests: `04_needs_review.test.sql`.
 - Child rows use composite foreign keys `(parent_id, user_id)`, so a user can't attach a row to another user's capture or task. Foreign-key checks bypass RLS, so this closes the gap.
 - The only SECURITY DEFINER function is the `auth.users` insert trigger that creates the profile. It pins `search_path` and touches only the new row. A test fails if any other function is SECURITY DEFINER.
 
@@ -83,6 +84,7 @@ Freshness is measured from the `amr` claim (`[{method, timestamp}]`): the latest
 
 ## Edge function stubs (Phase 0)
 
+- `process-capture` accepts an extraction result with zero tasks (the PRD range is 0 to 10 here): the capture goes to `done`, no task is created, and the response is still `202`. The stub produces that case when the handler is built with `stubEmpty: true`, which only tests do (`process_capture_test.ts`). The request body has no such flag. The fallback path that sets `needs_review` isn't built: the stub makes no model call.
 - `process-capture` validates `{capture_id, transcript, captured_at, timezone}` and creates the capture (`source = voice`) with the caller's JWT. It then inserts two canned synthetic tasks and returns `202 {capture_id}`. It makes no model call. A retry with the same capture_id is idempotent. `captured_at` and `timezone` are kept for the real pipeline, which needs them to resolve relative dates in the transcript.
 - `register-device` takes `{apns_token}` as 64–200 hex characters, upserts it on `(user_id, apns_token)` and returns 204.
 - `export-data` takes no body and needs a fresh session. It returns a JSON attachment of the caller's rows, read under RLS.
