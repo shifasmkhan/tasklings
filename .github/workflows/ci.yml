@@ -51,3 +51,29 @@ jobs:
           count=$(jq '.results | length' semgrep.json)
           echo "Semgrep findings: $count (exit $status)"
           [ "$count" -eq 0 ] && [ "$status" -eq 0 ]
+
+  app:
+    name: app (typecheck, lint, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.23"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      # Lockfile only; no install scripts run (none are needed for typecheck, lint or tests).
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm run test:ci
