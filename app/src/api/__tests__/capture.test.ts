@@ -54,7 +54,9 @@ describe('synthetic extraction keywords (mock backend)', () => {
     expect(sanitizeTitle('Email sam@example.test about https://example.test/x or call 555-123-4567')).toBe(
       'Email about or call',
     );
-    expect(sanitizeTitle('Pay​ the bill‮')).toBe('Pay the bill');
+    const zeroWidth = String.fromCodePoint(0x200b);
+    const override = String.fromCodePoint(0x202e);
+    expect(sanitizeTitle(`Pay${zeroWidth} the bill${override}`)).toBe('Pay the bill');
   });
 });
 

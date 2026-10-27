@@ -43,10 +43,25 @@ function kindFor(clause: string): TaskKind {
   return 'quick';
 }
 
+/**
+ * Control, zero-width and bidirectional-override code points, built from numbers so this file
+ * holds no invisible characters itself.
+ */
+const HIDDEN_RANGES: readonly (readonly [number, number])[] = [
+  [0x00, 0x1f],
+  [0x7f, 0x9f],
+  [0x200b, 0x200f],
+  [0x202a, 0x202e],
+  [0x2060, 0x2064],
+  [0xfeff, 0xfeff],
+];
+const hex = (n: number) => `\\u{${n.toString(16)}}`;
+const HIDDEN_CHARS = new RegExp(`[${HIDDEN_RANGES.map(([a, b]) => `${hex(a)}-${hex(b)}`).join('')}]`, 'gu');
+
 /** Titles never contain links, emails, phone numbers or hidden characters (PRD). */
 export function sanitizeTitle(raw: string): string {
   const cleaned = raw
-    .replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/g, '')
+    .replace(HIDDEN_CHARS, '')
     .replace(/\S+@\S+/g, '')
     .replace(/(?:https?:\/\/|www\.)\S+/gi, '')
     .replace(/\+?\d[\d\s().-]{5,}\d/g, '')
