@@ -1,0 +1,20 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.118.0"
+  },
+  "lock": {
+    "path": "./deno.lock",
+    "frozen": true
+  },
+  "compilerOptions": {
+    "strict": true
+  },
+  "fmt": {
+    "lineWidth": 110,
+    "singleQuote": false
+  },
+  "tasks": {
+    "test": "deno test --allow-read=. --allow-env",
+    "check": "deno check */index.ts tests/*.ts"
+  }
+}

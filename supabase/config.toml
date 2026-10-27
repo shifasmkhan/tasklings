@@ -1,0 +1,83 @@
+# Supabase CLI config for local development and CI.
+# Pinned CLI: see supabase/package.json. Hosted settings (Apple keys, SMTP) are set in the
+# dashboard, never here. Secrets use env(...) and are never committed.
+project_id = "tasklings"
+
+[api]
+enabled = true
+port = 54321
+# Only public is exposed through PostgREST. Nothing app-facing lives elsewhere.
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.migrations]
+enabled = true
+
+[db.seed]
+enabled = true
+# Synthetic data only (example.test users, made-up tasks).
+sql_paths = ["./seed.sql"]
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = false
+
+[storage]
+enabled = true
+file_size_limit = "25MiB"
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+# Sign in with Apple is the only sign-in method (US-04).
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+
+[auth.email]
+# Email sign-in is off in production; local dev uses seeded users only.
+enable_signup = false
+enable_confirmations = false
+
+[auth.external.apple]
+# Enabled in the hosted project. Locally off: CI has no Apple credentials.
+enabled = false
+client_id = "env(SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
+skip_nonce_check = false
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+deno_version = 2
+
+# Every function requires a valid user JWT at the gateway, and re-checks it with Auth.
+[functions.process-capture]
+verify_jwt = true
+import_map = "./functions/deno.json"
+
+[functions.register-device]
+verify_jwt = true
+import_map = "./functions/deno.json"
+
+[functions.export-data]
+verify_jwt = true
+import_map = "./functions/deno.json"
+
+[functions.delete-account]
+verify_jwt = true
+import_map = "./functions/deno.json"
+
+[analytics]
+enabled = false

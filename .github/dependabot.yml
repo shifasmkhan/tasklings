@@ -9,4 +9,20 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-  # Add npm (/app), pip (/ai) and Deno entries when those projects exist.
+  # Supabase CLI and Deno pins for the backend (supabase/package.json).
+  - package-ecosystem: "npm"
+    directory: "/supabase"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  # Edge function imports (supabase/functions/deno.json and deno.lock).
+  - package-ecosystem: "deno"
+    directory: "/supabase/functions"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  # Add npm (/app) and pip (/ai) entries when those projects exist.
