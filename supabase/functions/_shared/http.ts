@@ -96,11 +96,14 @@ function isJsonContentType(req: Request): boolean {
 }
 
 /** Parses a JSON object body. Non-objects (arrays, strings, null) are rejected. */
-export async function readJsonObject(req: Request): Promise<Record<string, unknown>> {
+export async function readJsonObject(
+  req: Request,
+  maxBytes = MAX_BODY_BYTES,
+): Promise<Record<string, unknown>> {
   if (!isJsonContentType(req)) {
     throw new HttpError(415, "unsupported_media_type", "Content-Type must be application/json");
   }
-  const text = await readBodyText(req);
+  const text = await readBodyText(req, maxBytes);
   let value: unknown;
   try {
     value = JSON.parse(text);

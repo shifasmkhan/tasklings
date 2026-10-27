@@ -39,9 +39,10 @@ select ok(p.proconfig @> array['search_path=""'], p.proname || ' pins search_pat
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public' and p.proname in ('today_tasks', 'complete_task', 'undo_task', 'defer_task', 'drop_task')
 order by p.proname;
-select is((select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-           where n.nspname in ('public', 'private') and p.prosecdef and p.proname <> 'handle_new_user'),
-          0, 'the only SECURITY DEFINER function is the auth trigger');
+select is((select array_agg(p.proname::text order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname in ('public', 'private') and p.prosecdef),
+          array['handle_new_user', 'reserve_extraction'],
+          'the only SECURITY DEFINER functions are the auth trigger and reserve_extraction');
 select function_privs_are('public', 'complete_task', array['uuid'], 'anon', array[]::text[], 'anon cannot execute complete_task');
 
 -- ---------------------------------------------------------------------------
