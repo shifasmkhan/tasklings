@@ -53,11 +53,11 @@ test("rejects empty, untrimmed and non-string titles", () => {
 });
 
 test("rejects control, zero-width and bidi characters in titles", () => {
-  for (const ch of ["\n", "\u0000", "​", "‮", "⁦", "﻿", "\u0085"]) {
+  for (const ch of ["\n", "\u0000", "\u200b", "\u202e", "\u2066", "\ufeff", "\u0085"]) {
     assert.deepEqual(codes({ tasks: [{ ...good, title: `Call${ch}mom` }] }), ["title_control_chars"], JSON.stringify(ch));
   }
   // ZWJ emoji sequence is fine.
-  assert.deepEqual(codes({ tasks: [{ ...good, title: "Plan family dinner \u{1F468}‍\u{1F469}" }] }), []);
+  assert.deepEqual(codes({ tasks: [{ ...good, title: "Plan family dinner \u{1F468}\u200d\u{1F469}" }] }), []);
 });
 
 test("rejects URLs, emails and phone numbers in titles", () => {

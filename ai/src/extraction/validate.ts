@@ -49,7 +49,7 @@ const TASK_KEYS = ["title", "kind", "effort_min", "due_date"] as const;
 
 // C0/C1 controls, zero-width space/non-joiner, LRM/RLM, bidi embeddings and
 // overrides, bidi isolates, BOM. ZWJ (U+200D) is allowed for emoji sequences.
-const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F​‌‎‏‪-‮⁦-⁩﻿]/;
+const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F\u200b\u200c\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/;
 const URL_LIKE =
   /(?:\b(?:https?|ftp|file|javascript|data|mailto|tel|sms):)|(?:\bwww\.)|(?:\b[a-z0-9-]+\.(?:com|net|org|io|ly|co|app|dev|xyz|info|biz|me|gg|link|ru|cn|tk|top|site|online|click)\b)/i;
 const EMAIL_LIKE = /[^\s@]+@[^\s@]+\.[^\s@]+/;

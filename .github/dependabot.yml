@@ -9,4 +9,12 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-  # Add npm (/app), pip (/ai) and Deno entries when those projects exist.
+  # AI pipeline (US-03): Anthropic SDK + type-checking dev tools.
+  - package-ecosystem: "npm"
+    directory: "/ai"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  # Add npm (/app) and Deno entries when those projects exist.

@@ -10,7 +10,7 @@
   "scripts": {
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check:deno": "deno check src/extraction/mod.ts",
+    "check:deno": "deno check src/extraction/mod.ts deno/smoke.ts && deno run --no-prompt deno/smoke.ts",
     "eval": "node evals/cli.ts",
     "eval:dry": "node evals/cli.ts --dry-run"
   },
