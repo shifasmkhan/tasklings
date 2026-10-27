@@ -14,9 +14,9 @@ import { TASK_EDITABLE_FIELDS } from './types';
 
 // Thin stub of the real backend behind the same ApiClient interface. It is not wired into
 // the app yet (the mock is the default) and has no tests against a live project.
-// Open questions for the Backend workstream, assumed here and flagged in the PR:
-// - RPC argument names: { id } and { id, reason }.
-// - today_tasks() response shape: either { quick, errand, project } or a flat array.
+// RPC names, arguments, the today_tasks() shape and error codes follow supabase/README.md
+// (backend PR #4): RPC args are { id } and { id, reason }; today_tasks() returns a flat array
+// ordered by kind (quick, errand, project), then sort_order.
 
 export interface SupabaseConfig {
   url: string;
@@ -27,7 +27,6 @@ export interface SupabaseConfig {
   fetchImpl?: typeof fetch;
 }
 
-const EMPTY_TODAY: TodayTasks = { quick: [], errand: [], project: [] };
 const KINDS: readonly TaskKind[] = ['quick', 'errand', 'project'];
 const EDITABLE: readonly string[] = TASK_EDITABLE_FIELDS;
 
@@ -46,7 +45,7 @@ export function createSupabaseApi(config: SupabaseConfig): ApiClient {
     };
     if (init.auth !== false) {
       const token = config.getAccessToken();
-      if (!token) throw new ApiError('not_authenticated', 'Sign in first', 401);
+      if (!token) throw new ApiError('unauthenticated', 'Sign in first', 401);
       headers.Authorization = `Bearer ${token}`;
     }
     let res: Response;
@@ -90,23 +89,16 @@ export function createSupabaseApi(config: SupabaseConfig): ApiClient {
     },
 
     async todayTasks(): Promise<TodayTasks> {
-      const res = await rpc<unknown>('today_tasks');
-      if (Array.isArray(res)) {
-        const rows = res as Task[];
-        return {
-          quick: rows.filter((t) => t.kind === 'quick'),
-          errand: rows.filter((t) => t.kind === 'errand'),
-          project: rows.filter((t) => t.kind === 'project'),
-        };
+      const rows = await rpc<unknown>('today_tasks');
+      if (!Array.isArray(rows)) {
+        throw new ApiError(CLIENT_ERROR_CODES.badResponse, 'Unexpected today_tasks response');
       }
-      if (res && typeof res === 'object') {
-        const grouped = res as Partial<TodayTasks>;
-        return KINDS.reduce<TodayTasks>(
-          (acc, k) => ({ ...acc, [k]: Array.isArray(grouped[k]) ? grouped[k] : [] }),
-          EMPTY_TODAY,
-        );
+      // Filtering keeps the server's order, so each group stays in sort_order.
+      const grouped: TodayTasks = { quick: [], errand: [], project: [] };
+      for (const row of rows as Task[]) {
+        if (KINDS.includes(row.kind)) grouped[row.kind].push(row);
       }
-      throw new ApiError(CLIENT_ERROR_CODES.badResponse, 'Unexpected today_tasks response');
+      return grouped;
     },
 
     completeTask: (id: string) => rpc<Task>('complete_task', { id }),
@@ -126,7 +118,7 @@ export function createSupabaseApi(config: SupabaseConfig): ApiClient {
         headers: { Prefer: 'return=representation' },
       });
       const row = rows[0];
-      if (!row) throw new ApiError('not_found', 'Task not found', 404);
+      if (!row) throw new ApiError('task_not_found', 'Task not found', 404);
       return row;
     },
 

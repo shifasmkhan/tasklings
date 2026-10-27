@@ -43,7 +43,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
   const now = options.now ?? (() => new Date());
   const latency = options.latencyMs ?? 0;
   const tasks = new Map<string, Task>();
-  // Prior versions for undo_task. The real RPC's undo semantics for defer are not yet in the PRD.
+  // Prior versions for undo_task: done/dropped -> open, or a defer's previous planned_for (backend README).
   const history = new Map<string, Task[]>();
   let pendingFailure: ApiError | null = null;
 
@@ -61,7 +61,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
 
   function get(id: string): Task {
     const t = tasks.get(id);
-    if (!t) throw new ApiError('not_found', 'Task not found', 404);
+    if (!t) throw new ApiError('task_not_found', 'Task not found', 404);
     return t;
   }
 
@@ -87,7 +87,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
 
     signInWithApple(identityToken: string): Promise<Session> {
       return call(() => {
-        if (!identityToken) throw new ApiError('invalid_token', 'Missing identity token', 400);
+        if (!identityToken) throw new ApiError('unauthenticated', 'Missing identity token', 401);
         return {
           access_token: 'mock-session',
           user_id: MOCK_USER_ID,
@@ -157,18 +157,18 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
         const t = get(id);
         const patch: Partial<Task> = {};
         for (const key of Object.keys(edit)) {
-          if (!EDITABLE.includes(key)) throw new ApiError('invalid_field', 'Field is not editable', 400);
+          if (!EDITABLE.includes(key)) throw new ApiError('protected_column', 'Field is not editable', 403);
         }
         if (edit.title !== undefined) {
           const title = edit.title.trim();
           if (title.length === 0 || title.length > 60) {
-            throw new ApiError('invalid_title', 'Title must be 1 to 60 characters', 400);
+            throw new ApiError('invalid_argument', 'Title must be 1 to 60 characters', 400);
           }
           patch.title = title;
         }
         if (edit.effort_min !== undefined) {
           if (!Number.isInteger(edit.effort_min) || edit.effort_min < 1 || edit.effort_min > 480) {
-            throw new ApiError('invalid_effort', 'effort_min must be 1 to 480', 400);
+            throw new ApiError('invalid_argument', 'effort_min must be 1 to 480', 400);
           }
           patch.effort_min = edit.effort_min;
         }

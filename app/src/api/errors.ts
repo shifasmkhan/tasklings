@@ -25,15 +25,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Stable codes are snake_case identifiers (supabase/README.md). Anything else is not one. */
+const STABLE_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+
 /**
- * Maps the standard error body {"error": {"code": "...", "message": "..."}} to an ApiError.
- * Anything else becomes a bad_response error so callers never see raw server bodies.
+ * Maps a backend error body to an ApiError. Two shapes carry a stable code:
+ * - edge functions: {"error": {"code": "...", "message": "..."}}
+ * - RPCs and table writes (PostgREST): {"code", "message", "details", "hint"}. Our errors are
+ *   raised with SQLSTATE PTxxx (HTTP xxx) and put the stable code in `hint`; they map to
+ *   {code: hint, message: details}.
+ * Anything else, including a PostgREST platform error with no hint (e.g. 42501), becomes
+ * bad_response, so callers never see raw server bodies.
  */
 export function toApiError(body: unknown, status: number | null): ApiError {
   if (isRecord(body) && isRecord(body.error)) {
     const { code, message } = body.error;
-    if (typeof code === 'string' && code.length > 0) {
+    if (typeof code === 'string' && STABLE_CODE.test(code)) {
       return new ApiError(code, typeof message === 'string' ? message : '', status);
+    }
+  }
+  if (isRecord(body) && typeof body.code === 'string' && typeof body.hint === 'string') {
+    const { hint, details } = body;
+    if (STABLE_CODE.test(hint)) {
+      return new ApiError(hint, typeof details === 'string' ? details : '', status);
     }
   }
   return new ApiError(

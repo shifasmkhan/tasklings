@@ -7,9 +7,9 @@ const TODAY = '2026-10-26';
 
 describe('toApiError', () => {
   it('maps the standard error shape', () => {
-    const err = toApiError({ error: { code: 'not_found', message: 'Task not found' } }, 404);
+    const err = toApiError({ error: { code: 'task_not_found', message: 'Task not found' } }, 404);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.code).toBe('not_found');
+    expect(err.code).toBe('task_not_found');
     expect(err.message).toBe('Task not found');
     expect(err.status).toBe(404);
   });
@@ -20,6 +20,41 @@ describe('toApiError', () => {
     expect(err.message).not.toContain('secret');
     expect(toApiError(null, null).code).toBe('bad_response');
     expect(toApiError({ error: { code: '' } }, 400).code).toBe('bad_response');
+  });
+
+  // PostgREST shape from the backend (supabase/README.md): SQLSTATE PTxxx sets the HTTP
+  // status, the stable code is in hint, and details is the message.
+  it('maps a PostgREST error to {code: hint, message: details}', () => {
+    const err = toApiError(
+      { code: 'PT409', message: 'invalid_state', details: 'Task is not open', hint: 'invalid_state' },
+      409,
+    );
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('invalid_state');
+    expect(err.message).toBe('Task is not open');
+    expect(err.status).toBe(409);
+    const noDetails = toApiError({ code: 'PT404', message: 'task_not_found', details: null, hint: 'task_not_found' }, 404);
+    expect(noDetails.code).toBe('task_not_found');
+    expect(noDetails.message).toBe('');
+  });
+
+  it('keeps PostgREST errors without a stable code in hint as bad_response', () => {
+    // Platform errors: no hint (permission denied, unique violation) or a prose hint.
+    const denied = toApiError(
+      { code: '42501', message: 'permission denied for table tasks', details: null, hint: null },
+      403,
+    );
+    expect(denied.code).toBe('bad_response');
+    expect(denied.status).toBe(403);
+    expect(denied.message).not.toContain('permission denied');
+    const dup = toApiError({ code: '23505', message: 'duplicate key', details: 'Key (id)=(x) exists.' }, 409);
+    expect(dup.code).toBe('bad_response');
+    expect(dup.message).not.toContain('Key (id)');
+    const prose = toApiError(
+      { code: 'PGRST202', message: 'Could not find the function', details: null, hint: 'Perhaps you meant to call public.today_tasks' },
+      404,
+    );
+    expect(prose.code).toBe('bad_response');
   });
 });
 
@@ -53,7 +88,7 @@ describe('mock api', () => {
 
   it('rejects with stable codes', async () => {
     const api = createMockApi({ tasks: tasks(), today: () => TODAY });
-    await expect(api.completeTask('missing')).rejects.toMatchObject({ code: 'not_found' });
+    await expect(api.completeTask('missing')).rejects.toMatchObject({ code: 'task_not_found' });
     await api.completeTask('t1');
     await expect(api.completeTask('t1')).rejects.toMatchObject({ code: 'invalid_state' });
     await expect(api.undoTask('t2')).rejects.toMatchObject({ code: 'nothing_to_undo' });
@@ -67,11 +102,11 @@ describe('mock api', () => {
     expect(updated.effort_min).toBe(25);
     expect(updated.effort_min_initial).toBe(10);
     expect(updated.title).toBe('Renamed synthetic');
-    await expect(api.updateTask('t1', { title: 'x'.repeat(61) })).rejects.toMatchObject({ code: 'invalid_title' });
-    await expect(api.updateTask('t1', { effort_min: 0 })).rejects.toMatchObject({ code: 'invalid_effort' });
+    await expect(api.updateTask('t1', { title: 'x'.repeat(61) })).rejects.toMatchObject({ code: 'invalid_argument' });
+    await expect(api.updateTask('t1', { effort_min: 0 })).rejects.toMatchObject({ code: 'invalid_argument' });
     await expect(
       api.updateTask('t1', { effort_min_initial: 1 } as unknown as Parameters<typeof api.updateTask>[1]),
-    ).rejects.toMatchObject({ code: 'invalid_field' });
+    ).rejects.toMatchObject({ code: 'protected_column' });
   });
 
   it('implements the remaining contracts', async () => {
@@ -114,25 +149,55 @@ describe('supabase stub', () => {
   it('fails closed without a session', async () => {
     const fetchImpl = fakeFetch(200, {});
     const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => null, fetchImpl });
-    await expect(api.todayTasks()).rejects.toMatchObject({ code: 'not_authenticated' });
+    await expect(api.todayTasks()).rejects.toMatchObject({ code: 'unauthenticated' });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('groups a flat today_tasks response by kind', async () => {
+  it('maps a PostgREST RPC error from the real client', async () => {
+    const fetchImpl = fakeFetch(404, { code: 'PT404', message: 'task_not_found', details: 'No such task', hint: 'task_not_found' });
+    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => 'jwt', fetchImpl });
+    await expect(api.deferTask('t1')).rejects.toMatchObject({ code: 'task_not_found', message: 'No such task', status: 404 });
+  });
+
+  it('groups the flat today_tasks list (kind, then sort_order) and keeps the order', async () => {
+    // Server order: kind (quick, errand, project), then sort_order.
     const rows = [
-      makeTask({ id: 'a', title: 'Synthetic', kind: 'errand' }, TODAY),
-      makeTask({ id: 'b', title: 'Synthetic', kind: 'quick' }, TODAY),
+      makeTask({ id: 'q1', title: 'Synthetic', kind: 'quick', sort_order: 0 }, TODAY),
+      makeTask({ id: 'q2', title: 'Synthetic', kind: 'quick', sort_order: 4 }, TODAY),
+      makeTask({ id: 'e1', title: 'Synthetic', kind: 'errand', sort_order: 1 }, TODAY),
+      makeTask({ id: 'e2', title: 'Synthetic', kind: 'errand', sort_order: 2 }, TODAY),
+      makeTask({ id: 'p1', title: 'Synthetic', kind: 'project', sort_order: 3 }, TODAY),
     ];
+    const fetchImpl = fakeFetch(200, rows);
+    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => 'jwt', fetchImpl });
+    const today = await api.todayTasks();
+    expect(today.quick.map((t) => t.id)).toEqual(['q1', 'q2']);
+    expect(today.errand.map((t) => t.id)).toEqual(['e1', 'e2']);
+    expect(today.project.map((t) => t.id)).toEqual(['p1']);
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://example.test/rest/v1/rpc/today_tasks');
+    expect(init.method).toBe('POST');
+  });
+
+  it('rejects a today_tasks response that is not a flat list', async () => {
     const api = createSupabaseApi({
       url: 'https://example.test',
       anonKey: 'anon',
       getAccessToken: () => 'jwt',
-      fetchImpl: fakeFetch(200, rows),
+      fetchImpl: fakeFetch(200, { quick: [], errand: [], project: [] }),
     });
-    const today = await api.todayTasks();
-    expect(today.quick.map((t) => t.id)).toEqual(['b']);
-    expect(today.errand.map((t) => t.id)).toEqual(['a']);
-    expect(today.project).toEqual([]);
+    await expect(api.todayTasks()).rejects.toMatchObject({ code: 'bad_response' });
+  });
+
+  it('sends the RPC arguments the backend defines', async () => {
+    const row = makeTask({ id: 't1', title: 'Synthetic', kind: 'quick' }, TODAY);
+    const fetchImpl = fakeFetch(200, row);
+    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => 'jwt', fetchImpl });
+    await api.completeTask('t1');
+    await api.dropTask('t1', 'obsolete');
+    await api.dropTask('t1');
+    const bodies = fetchImpl.mock.calls.map((c) => JSON.parse((c as [string, RequestInit])[1].body as string));
+    expect(bodies).toEqual([{ id: 't1' }, { id: 't1', reason: 'obsolete' }, { id: 't1', reason: null }]);
   });
 
   it('sends only the editable columns on a task edit', async () => {
@@ -148,4 +213,3 @@ describe('supabase stub', () => {
     expect(JSON.parse(init.body as string)).toEqual({ title: 'Synthetic edit' });
   });
 });
-
