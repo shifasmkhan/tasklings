@@ -74,8 +74,14 @@ jobs:
           -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Lint database functions
         run: npx --no-install supabase db lint --level warning --fail-on error
+      # The summary is surfaced as an annotation so a run with zero tests is visible without logs.
       - name: Run pgTAP tests
-        run: npx --no-install supabase test db
+        run: |
+          set -o pipefail
+          npx --no-install supabase test db 2>&1 | tee "$RUNNER_TEMP/pgtap.log"
+          summary=$(grep -E '^(Files=|Result:)' "$RUNNER_TEMP/pgtap.log" | tr '\n' ' ' | tr -d '%\r')
+          echo "::notice title=pgTAP::${summary}"
+          grep -q '^Result: PASS' "$RUNNER_TEMP/pgtap.log"
       - name: Stop local Supabase
         if: always()
         run: npx --no-install supabase stop --no-backup
@@ -95,4 +101,10 @@ jobs:
       - name: Install pinned tools
         run: npm ci --no-audit --no-fund
       - name: Format, lint, type-check and test
-        run: npm run test:functions
+        env:
+          NO_COLOR: "1"
+        run: |
+          set -o pipefail
+          npm run -s test:functions 2>&1 | tee "$RUNNER_TEMP/deno.log"
+          summary=$(grep -E '^(ok|FAILED) \|' "$RUNNER_TEMP/deno.log" | tail -1 | tr -d '%\r')
+          echo "::notice title=deno test::${summary}"
