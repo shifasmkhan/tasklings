@@ -51,3 +51,48 @@ jobs:
           count=$(jq '.results | length' semgrep.json)
           echo "Semgrep findings: $count (exit $status)"
           [ "$count" -eq 0 ] && [ "$status" -eq 0 ]
+
+  # Migrations, RLS, RPCs and rollover against a throwaway local Supabase. No secrets needed.
+  db-tests:
+    name: database tests (pgTAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: supabase
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Supabase CLI pinned in supabase/package.json, integrity-checked by the lockfile.
+      - name: Install pinned tools
+        run: npm ci --no-audit --no-fund
+      # Postgres and Auth only (Auth owns the auth schema); everything else is excluded.
+      - name: Start local Supabase
+        run: >-
+          npx --no-install supabase start
+          -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Lint database functions
+        run: npx --no-install supabase db lint --level warning --fail-on error
+      - name: Run pgTAP tests
+        run: npx --no-install supabase test db
+      - name: Stop local Supabase
+        if: always()
+        run: npx --no-install supabase stop --no-backup
+
+  functions:
+    name: edge function tests (deno)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: supabase
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Deno pinned in supabase/package.json; function deps pinned in supabase/functions/deno.lock.
+      - name: Install pinned tools
+        run: npm ci --no-audit --no-fund
+      - name: Format, lint, type-check and test
+        run: npm run test:functions
