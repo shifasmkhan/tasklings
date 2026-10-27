@@ -24,6 +24,5 @@ Deno.serve(createHandler({
   model: config.apiKey === null
     ? null
     : createClaudeClient({ apiKey: config.apiKey, model: config.model, timeoutMs: config.timeoutMs }),
-  limits: { userDailyCap: config.userDailyCap, globalDailyCap: config.globalDailyCap },
   waitUntil,
 }));

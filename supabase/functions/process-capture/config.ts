@@ -1,21 +1,14 @@
 // Runtime settings for process-capture, read from function secrets (supabase secrets set ...).
+// The daily spend limits are not here: they live in the database (private.extraction_limits).
 // Nothing here is logged except the names of variables that were ignored.
 
 import { DEFAULT_MODEL, DEFAULT_TIMEOUT_MS } from "./model_client.ts";
-
-export const DEFAULT_USER_DAILY_CAP = 50;
-export const DEFAULT_GLOBAL_DAILY_CAP = 500;
-/** Ceilings enforced by public.reserve_extraction; values above them would be refused there. */
-export const MAX_USER_DAILY_CAP = 200;
-export const MAX_GLOBAL_DAILY_CAP = 100_000;
 
 export interface CaptureConfig {
   /** Absent when ANTHROPIC_API_KEY is not set: every capture then falls back (nothing is lost). */
   apiKey: string | null;
   model: string;
   timeoutMs: number;
-  userDailyCap: number;
-  globalDailyCap: number;
   /** Names of settings that were present but invalid and replaced by their defaults. */
   ignored: string[];
 }
@@ -51,8 +44,6 @@ export function loadConfig(getEnv: (name: string) => string | undefined): Captur
     apiKey: key && key.trim() !== "" ? key.trim() : null,
     model,
     timeoutMs: pick("EXTRACTION_TIMEOUT_MS", 1_000, 60_000, DEFAULT_TIMEOUT_MS),
-    userDailyCap: pick("EXTRACTION_USER_DAILY_CAP", 1, MAX_USER_DAILY_CAP, DEFAULT_USER_DAILY_CAP),
-    globalDailyCap: pick("EXTRACTION_GLOBAL_DAILY_CAP", 1, MAX_GLOBAL_DAILY_CAP, DEFAULT_GLOBAL_DAILY_CAP),
     ignored,
   };
 }

@@ -126,40 +126,38 @@ Deno.test("model client: an oversized reply is refused", async () => {
   assert.equal(await code(c.complete(REQ)), "bad_response");
 });
 
+Deno.test("config: cap variables no longer exist (limits live in the database)", () => {
+  const c = loadConfig((n) => (n === "EXTRACTION_USER_DAILY_CAP" ? "5" : undefined));
+  assert.ok(!("userDailyCap" in c) && !("globalDailyCap" in c));
+  assert.deepEqual(c.ignored, []);
+});
+
 Deno.test("config: defaults, overrides and ignored values", () => {
   const env = (m: Record<string, string>) => (n: string) => m[n];
   const d = loadConfig(env({}));
   assert.deepEqual(
-    { apiKey: d.apiKey, model: d.model, user: d.userDailyCap, global: d.globalDailyCap, ignored: d.ignored },
-    { apiKey: null, model: "claude-haiku-5-5", user: 50, global: 500, ignored: [] },
+    { apiKey: d.apiKey, model: d.model, ignored: d.ignored },
+    { apiKey: null, model: "claude-haiku-5-5", ignored: [] },
   );
   const c = loadConfig(env({
     ANTHROPIC_API_KEY: " k ",
     EXTRACTION_MODEL: "claude-sonnet-5-5",
-    EXTRACTION_USER_DAILY_CAP: "20",
-    EXTRACTION_GLOBAL_DAILY_CAP: "1000",
     EXTRACTION_TIMEOUT_MS: "15000",
   }));
   assert.deepEqual(
-    { apiKey: c.apiKey, model: c.model, user: c.userDailyCap, global: c.globalDailyCap, t: c.timeoutMs },
-    { apiKey: "k", model: "claude-sonnet-5-5", user: 20, global: 1000, t: 15000 },
+    { apiKey: c.apiKey, model: c.model, t: c.timeoutMs },
+    { apiKey: "k", model: "claude-sonnet-5-5", t: 15000 },
   );
   const bad = loadConfig(env({
     ANTHROPIC_API_KEY: "  ",
     EXTRACTION_MODEL: "Bad Model!",
-    EXTRACTION_USER_DAILY_CAP: "0",
-    EXTRACTION_GLOBAL_DAILY_CAP: "999999999",
     EXTRACTION_TIMEOUT_MS: "abc",
   }));
   assert.equal(bad.apiKey, null);
   assert.equal(bad.model, "claude-haiku-5-5");
-  assert.equal(bad.userDailyCap, 50);
-  assert.equal(bad.globalDailyCap, 500);
   assert.deepEqual(bad.ignored.sort(), [
-    "EXTRACTION_GLOBAL_DAILY_CAP",
     "EXTRACTION_MODEL",
     "EXTRACTION_TIMEOUT_MS",
-    "EXTRACTION_USER_DAILY_CAP",
   ]);
   assert.ok(!JSON.stringify(bad).includes("Bad Model"), "ignored lists names, not values");
 });

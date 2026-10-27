@@ -25,7 +25,6 @@ const VALID = {
   captured_at: "2026-10-27T09:58:00-05:00",
   timezone: "America/Chicago",
 };
-const LIMITS = { userDailyCap: 7, globalDailyCap: 70 };
 const CANARY = "CANARY-MODEL-OUTPUT-9f3a";
 
 const MILK = { title: "Buy synthetic milk", kind: "errand", effort_min: 20, due_date: null };
@@ -50,13 +49,15 @@ function fakeStore(opts: {
   verdict?: QuotaVerdict | Error;
   insertFails?: boolean;
   doneFails?: boolean;
+  hasTasks?: boolean;
 } = {}) {
   const calls: string[] = [];
   const tokens: string[] = [];
   const tasks: ExtractedTask[] = [];
   const flags: boolean[] = [];
   const statuses: { status: string; error?: string }[] = [];
-  const reserved: [number, number][] = [];
+  let reserved = 0;
+  const hasTasks = opts.hasTasks ?? false;
   const factory = (token: string): CaptureStore => {
     tokens.push(token);
     return {
@@ -75,15 +76,26 @@ function fakeStore(opts: {
         statuses.push({ status, error });
         return status === "done" && opts.doneFails ? Promise.reject(new Error("boom")) : Promise.resolve();
       },
-      reserveExtraction: (u, g) => {
+      hasTasks: () => (calls.push("hasTasks"), Promise.resolve(hasTasks)),
+      reserveExtraction: () => {
         calls.push("reserve");
-        reserved.push([u, g]);
+        reserved++;
         const v = opts.verdict ?? "ok";
         return v instanceof Error ? Promise.reject(v) : Promise.resolve(v);
       },
     };
   };
-  return { calls, tokens, tasks, flags, statuses, reserved, factory };
+  return {
+    calls,
+    tokens,
+    tasks,
+    flags,
+    statuses,
+    get reserved() {
+      return reserved;
+    },
+    factory,
+  };
 }
 
 function handler(
@@ -99,7 +111,6 @@ function handler(
       now: () => NOW,
       log: rec.log,
       model,
-      limits: LIMITS,
       ...extra,
     }),
     store,
@@ -127,7 +138,7 @@ Deno.test("process-capture: ok result inserts the extracted tasks with the calle
   assert.deepEqual(store.tokens, [token]);
   assert.deepEqual(store.tasks, [MILK, CALL]);
   assert.deepEqual(store.flags, [false]);
-  assert.deepEqual(store.reserved, [[LIMITS.userDailyCap, LIMITS.globalDailyCap]]);
+  assert.equal(store.reserved, 1, "one unit reserved per run");
   assert.equal(model.requests.length, 1);
   assert.equal(model.requests[0].maxTokens, MAX_OUTPUT_TOKENS);
   // The transcript goes to the model, and only there.
@@ -247,6 +258,45 @@ Deno.test("process-capture: duplicate capture_id from the same user is idempoten
   assert.equal(model.requests.length, 0);
 });
 
+Deno.test("process-capture: retrying a failed capture re-runs the pipeline and reserves a unit again", async () => {
+  const model = fakeModel(okReply(MILK));
+  const { h, store, rec } = handler(fakeStore({ result: "retry" }), model.client);
+  const res = await h(post("process-capture", VALID, tokenFor()));
+  assert.equal(res.status, 202);
+  assert.deepEqual(store.calls, [`capture:${CAPTURE_ID}`, "hasTasks", "reserve", "tasks", "status:done"]);
+  assert.equal(store.reserved, 1);
+  assert.deepEqual(store.tasks, [MILK]);
+  assert.ok(rec.events.some((e) => e.event === "capture_retry"));
+});
+
+Deno.test("process-capture: a retry at a cap saves the review task like a first run", async () => {
+  const model = fakeModel(okReply(MILK));
+  const { h, store } = handler(fakeStore({ result: "retry", verdict: "user_cap" }), model.client);
+  await h(post("process-capture", VALID, tokenFor()));
+  assert.equal(model.requests.length, 0);
+  assert.deepEqual(store.tasks, [FALLBACK_TASK]);
+  assert.deepEqual(store.flags, [true]);
+});
+
+Deno.test("process-capture: a retry whose capture already has tasks is finished without a model call or new tasks", async () => {
+  const model = fakeModel(okReply(MILK));
+  const { h, store } = handler(fakeStore({ result: "retry", hasTasks: true }), model.client);
+  const res = await h(post("process-capture", VALID, tokenFor()));
+  assert.equal(res.status, 202);
+  assert.deepEqual(store.calls, [`capture:${CAPTURE_ID}`, "hasTasks", "status:done"]);
+  assert.equal(model.requests.length, 0);
+  assert.equal(store.reserved, 0);
+});
+
+Deno.test("process-capture: a capture_id that is done or still parsing is not re-run", async () => {
+  // The store reports `exists` for any status other than failed (see store.ts).
+  const model = fakeModel(okReply(MILK));
+  const { h, store } = handler(fakeStore({ result: "exists" }), model.client);
+  await h(post("process-capture", VALID, tokenFor()));
+  assert.deepEqual(store.calls, [`capture:${CAPTURE_ID}`]);
+  assert.equal(store.reserved, 0);
+});
+
 Deno.test("process-capture: capture_id owned by someone else is a conflict", async () => {
   const model = fakeModel(okReply(MILK));
   const { h, store } = handler(fakeStore({ result: "conflict" }), model.client);
@@ -296,11 +346,11 @@ Deno.test("process-capture: if even the failed status can't be saved, the handle
     now: () => NOW,
     log: rec.log,
     model: fakeModel(okReply(MILK)).client,
-    limits: LIMITS,
     store: () => ({
       insertCapture: () => Promise.resolve("created"),
       insertTasks: () => Promise.reject(new Error("x")),
       setCaptureStatus: () => Promise.reject(new Error("y")),
+      hasTasks: () => Promise.resolve(false),
       reserveExtraction: () => Promise.resolve("ok"),
     }),
   });

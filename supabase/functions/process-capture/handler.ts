@@ -8,6 +8,8 @@
 //   * fallback -> insert the one fixed review task with needs_review = true, capture `done`
 //   * a spend cap (per user or global) or a missing model key -> same as fallback, with no model call
 //   * unexpected failure -> capture `failed` with a stable error code
+// A retry with the same capture_id re-runs the pipeline only if the caller's capture is `failed`
+// (it reserves a unit again). Captures stuck in `parsing` are failed by a cron sweeper.
 // Everything runs with the caller's JWT (RLS). Logs carry IDs, codes and counts only: never the
 // transcript, the prompt, model output or task titles.
 
@@ -54,7 +56,8 @@ export const MAX_EXTRACTED_TASKS = 10;
 export const ERROR_EXTRACTION_FAILED = "extraction_failed";
 export const ERROR_TASKS_INSERT_FAILED = "tasks_insert_failed";
 
-export type InsertCaptureResult = "created" | "exists" | "conflict";
+/** `retry`: the caller's own capture was `failed` and is now `parsing` again, so the pipeline re-runs. */
+export type InsertCaptureResult = "created" | "exists" | "conflict" | "retry";
 export type QuotaVerdict = "ok" | "user_cap" | "global_cap";
 
 /** Data access, bound to the caller's JWT. */
@@ -62,8 +65,10 @@ export interface CaptureStore {
   insertCapture(id: string, transcript: string): Promise<InsertCaptureResult>;
   insertTasks(captureId: string, tasks: readonly ExtractedTask[], needsReview: boolean): Promise<number>;
   setCaptureStatus(id: string, status: "done" | "failed", error?: string): Promise<void>;
+  /** True when the capture already has tasks (a retry after a late failure must not duplicate them). */
+  hasTasks(captureId: string): Promise<boolean>;
   /** public.reserve_extraction: reserves one extraction run for the caller, or says which cap is hit. */
-  reserveExtraction(userLimit: number, globalLimit: number): Promise<QuotaVerdict>;
+  reserveExtraction(): Promise<QuotaVerdict>;
 }
 
 export interface Deps {
@@ -73,7 +78,6 @@ export interface Deps {
   log: Logger;
   /** Null when no API key is configured: captures then save as one needs_review task. */
   model: ModelClient | null;
-  limits: { userDailyCap: number; globalDailyCap: number };
   /** EdgeRuntime.waitUntil when the runtime has it. Without it the pipeline finishes before the 202. */
   waitUntil?: (work: Promise<unknown>) => void;
 }
@@ -121,9 +125,21 @@ export async function processCapture(
   deps: Deps,
   store: CaptureStore,
   input: CaptureRequest,
+  isRetry = false,
 ): Promise<void> {
   const base = { fn: "process-capture", capture_id: input.capture_id };
   try {
+    if (isRetry && await store.hasTasks(input.capture_id)) {
+      // The earlier run got as far as saving tasks; only the status update was lost.
+      await store.setCaptureStatus(input.capture_id, "done");
+      deps.log("capture_processed", {
+        ...base,
+        outcome: "retry_already_saved",
+        tasks: 0,
+        needs_review: false,
+      });
+      return;
+    }
     let tasks: readonly ExtractedTask[];
     let needsReview: boolean;
     let outcome: string;
@@ -133,7 +149,7 @@ export async function processCapture(
       skip = "model_unconfigured";
     } else {
       try {
-        const verdict = await store.reserveExtraction(deps.limits.userDailyCap, deps.limits.globalDailyCap);
+        const verdict = await store.reserveExtraction();
         if (verdict !== "ok") skip = verdict;
       } catch {
         // Fail closed on spend: if the counters can't be read, don't call the model.
@@ -201,7 +217,10 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
       deps.log("capture_duplicate", { fn: "process-capture", capture_id: input.capture_id });
       return json(202, { capture_id: input.capture_id });
     }
-    const work = processCapture(deps, store, input);
+    if (created === "retry") {
+      deps.log("capture_retry", { fn: "process-capture", capture_id: input.capture_id });
+    }
+    const work = processCapture(deps, store, input, created === "retry");
     if (deps.waitUntil) deps.waitUntil(work);
     else await work;
     return json(202, { capture_id: input.capture_id });
