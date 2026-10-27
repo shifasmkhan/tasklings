@@ -59,6 +59,13 @@
   "workspace": {
     "dependencies": [
       "npm:@supabase/supabase-js@2.118.0"
-    ]
+    ],
+    "links": {
+      "npm:@tasklings/ai@0.0.0": {
+        "dependencies": [
+          "npm:@anthropic-ai/sdk@0.133.0"
+        ]
+      }
+    }
   }
 }

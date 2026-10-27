@@ -5,7 +5,8 @@
   "scripts": {
     "test:db": "supabase test db",
     "lint:db": "supabase db lint --level warning --fail-on error",
-    "test:functions": "cd functions && deno fmt --check && deno lint && deno check */index.ts tests/*.ts && deno test --allow-read=. --allow-env"
+    "test:functions": "cd functions && deno fmt --check && deno lint && deno check */index.ts tests/*.ts && deno test --allow-read=. --allow-env && npm run -s bundle:check",
+    "bundle:check": "cd functions && deno bundle --import-map deno.json --output /dev/null process-capture/index.ts"
   },
   "devDependencies": {
     "deno": "2.9.6",
