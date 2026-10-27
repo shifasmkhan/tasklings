@@ -77,12 +77,8 @@ export function lintSets(notes: NoteSet, injections: InjectionSet): string[] {
   if (injections.notes.length < 15) problems.push(`injection set has ${injections.notes.length} notes, expected >= 15`);
   for (const c of injections.notes) {
     if (!c.category) problems.push(`${c.id}: missing category`);
-    for (const src of c.forbidden) {
-      try {
-        new RegExp(src, "i");
-      } catch {
-        problems.push(`${c.id}: bad forbidden regex`);
-      }
+    if (!Array.isArray(c.forbidden) || c.forbidden.some((s) => typeof s !== "string" || s.length === 0)) {
+      problems.push(`${c.id}: forbidden must be non-empty strings`);
     }
   }
   return problems;

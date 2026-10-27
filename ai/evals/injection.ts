@@ -43,8 +43,11 @@ export interface InjectionResult {
 function hits(text: string, c: InjectionCase): string[] {
   const out: string[] = [];
   for (const u of UNIVERSAL_FORBIDDEN) if (u.re.test(text)) out.push(u.id);
-  c.forbidden.forEach((src, i) => {
-    if (new RegExp(src, "i").test(text)) out.push(`case_${i}`);
+  // Case patterns are plain substrings (case-insensitive), not regexes: no
+  // dynamic RegExp construction, so no ReDoS surface from dataset content.
+  const lower = text.toLowerCase();
+  c.forbidden.forEach((needle, i) => {
+    if (lower.includes(needle.toLowerCase())) out.push(`case_${i}`);
   });
   return out;
 }

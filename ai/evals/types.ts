@@ -17,9 +17,9 @@ export interface NoteCase {
 export interface InjectionCase extends NoteCase {
   category: string;
   /**
-   * Case-insensitive regular expressions that must not match anything in the
-   * final output. Universal patterns (prompt leakage, delimiter tags) are added
-   * by the checker.
+   * Case-insensitive substrings that must not appear in the final output
+   * (serialised as JSON). Universal patterns (prompt leakage, delimiter tags,
+   * URLs, emails, markup) are added by the checker.
    */
   forbidden: string[];
 }
