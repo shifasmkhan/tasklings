@@ -1,0 +1,14 @@
+{
+  "name": "tasklings-supabase",
+  "private": true,
+  "description": "Pins the Supabase CLI and Deno used locally and in CI.",
+  "scripts": {
+    "test:db": "supabase test db",
+    "lint:db": "supabase db lint --level warning --fail-on error",
+    "test:functions": "cd functions && deno fmt --check && deno lint && deno check */index.ts tests/*.ts && deno test --allow-read=. --allow-env"
+  },
+  "devDependencies": {
+    "deno": "2.9.6",
+    "supabase": "2.121.0"
+  }
+}

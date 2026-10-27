@@ -9,6 +9,22 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+  # Supabase CLI and Deno pins for the backend (supabase/package.json).
+  - package-ecosystem: "npm"
+    directory: "/supabase"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  # Edge function imports (supabase/functions/deno.json and deno.lock).
+  - package-ecosystem: "deno"
+    directory: "/supabase/functions"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
   # AI pipeline (US-03): Anthropic SDK + type-checking dev tools.
   - package-ecosystem: "npm"
     directory: "/ai"
@@ -17,4 +33,4 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-  # Add npm (/app) and Deno entries when those projects exist.
+  # Add an npm (/app) entry when the app project exists.
