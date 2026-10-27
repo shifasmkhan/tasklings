@@ -12,7 +12,8 @@ import { TaskRow } from './TaskRow';
 import { useToday } from './useToday';
 
 export interface TodayNavigation {
-  openCapture: () => void;
+  /** `startLocked`: a tap on the mic starts locked recording at once; a long press just opens the sheet. */
+  openCapture: (options?: { startLocked?: boolean }) => void;
   openTask: (task: Task) => void;
   openCheckIn: () => void;
 }
@@ -139,7 +140,11 @@ export function TodayScreen({ nav, now = new Date() }: { nav: TodayNavigation; n
         />
       ) : null}
 
-      <MicBar onPress={nav.openCapture} bottomInset={insets.bottom} onHeight={setMeasuredBar} />
+      <MicBar
+        onTap={() => nav.openCapture({ startLocked: true })}
+        onHold={() => nav.openCapture()}
+        bottomInset={insets.bottom} onHeight={setMeasuredBar}
+      />
     </View>
   );
 }

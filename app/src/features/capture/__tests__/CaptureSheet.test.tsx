@@ -32,11 +32,11 @@ function setup(speech: MockSpeechOptions = {}) {
   return { api, store, recognizer, submit, cancel, processCapture, onClose, createRecognizer };
 }
 
-async function renderSheet(h: ReturnType<typeof setup>) {
+async function renderSheet(h: ReturnType<typeof setup>, startLocked = false) {
   await render(
     <ApiProvider client={h.api}>
       <CaptureProvider store={h.store}>
-        <CaptureSheet onClose={h.onClose} createRecognizer={h.createRecognizer} />
+        <CaptureSheet onClose={h.onClose} createRecognizer={h.createRecognizer} startLocked={startLocked} />
       </CaptureProvider>
     </ApiProvider>,
   );
@@ -89,6 +89,34 @@ describe('Capture sheet: voice (US-01)', () => {
     expect(h.processCapture).toHaveBeenCalledWith(
       expect.objectContaining({ capture_id: 'capture-1', transcript: SIX_WORDS, timezone: expect.any(String) }),
     );
+  });
+
+  it('opened by a tap on Today\u2019s mic, it starts locked recording straight away', async () => {
+    const h = setup();
+    await renderSheet(h, true);
+    await advance(1200);
+    expect(screen.getByText(/Recording, locked/)).toBeOnTheScreen();
+    expect(screen.getByTestId('live-transcript')).toHaveTextContent(SIX_WORDS);
+    // One tap on the button saves.
+    await press();
+    await lift();
+    expect(h.submit).toHaveBeenCalledWith({ source: 'voice', transcript: expect.stringMatching(/^Call the dentist/) });
+    expect(h.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('opened without the flag (a long press on Today), it waits for the user', async () => {
+    const h = setup();
+    await renderSheet(h, false);
+    await advance(1200);
+    expect(screen.queryByTestId('live-transcript')).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Record a task' })).toBeOnTheScreen();
+  });
+
+  it('auto-start asks for permission and shows the denied message when refused', async () => {
+    const h = setup({ denyPermission: true });
+    await renderSheet(h, true);
+    await advance(10);
+    expect(screen.getByText(COPY.denied)).toBeOnTheScreen();
   });
 
   it('shows the waveform and a running timer while recording', async () => {

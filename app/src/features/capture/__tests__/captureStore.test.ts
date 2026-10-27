@@ -1,7 +1,7 @@
 import { ApiError } from '@/api/errors';
 import { createMockApi } from '@/api/mock';
 import type { MockApiClient } from '@/api/mock';
-import { CaptureStore, type CaptureResult } from '../captureStore';
+import { CaptureStore, RESULT_TIMEOUT_MS, type CaptureResult } from '../captureStore';
 
 const mockRandomUUID = jest.fn(() => '3b241101-e2bb-4255-8caf-4136c566a962');
 jest.mock('expo-crypto', () => ({ randomUUID: () => mockRandomUUID() }));
@@ -156,6 +156,63 @@ describe('CaptureStore (US-01, US-02, US-03)', () => {
       store.submit({ source: 'text', transcript: 'Pay the water bill' });
       await flush();
       expect(store.getPending()[0]?.status).toBe('failed');
+    });
+  });
+
+  describe('result timeout', () => {
+    function slowSetup() {
+      // The result takes far longer than the timeout.
+      const api = createMockApi({ tasks: [], today: () => TODAY, captureResultDelayMs: 10 * 60_000 });
+      const store = new CaptureStore({ api, arrivals: null, newId: () => 'c1' });
+      const results: CaptureResult[] = [];
+      store.onResult((r) => results.push(r));
+      return { api, store, results };
+    }
+
+    it('stays "sorting" until 60 s after the 202, then becomes failed', async () => {
+      const { store } = slowSetup();
+      store.submit({ source: 'text', transcript: 'Pay the water bill' });
+      await flush();
+      expect(store.getPending()[0]?.status).toBe('sorting');
+      await flush(RESULT_TIMEOUT_MS - 1);
+      expect(store.getPending()[0]?.status).toBe('sorting');
+      await flush(1);
+      expect(store.getPending()[0]?.status).toBe('failed');
+    });
+
+    it('Try again resends the same capture_id and waits another 60 s', async () => {
+      const { api, store } = slowSetup();
+      const spy = jest.spyOn(api, 'processCapture');
+      const id = store.submit({ source: 'text', transcript: 'Pay the water bill' });
+      await flush(RESULT_TIMEOUT_MS + 1);
+      await store.retry(id);
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy.mock.calls[1]?.[0]).toEqual(spy.mock.calls[0]?.[0]);
+      expect(store.getPending()[0]?.status).toBe('sorting');
+      await flush(RESULT_TIMEOUT_MS - 1);
+      expect(store.getPending()[0]?.status).toBe('sorting');
+    });
+
+    it('a result that arrives after the timeout still completes the capture', async () => {
+      const api = createMockApi({ tasks: [], today: () => TODAY, captureResultDelayMs: RESULT_TIMEOUT_MS + 5000 });
+      const store = new CaptureStore({ api, arrivals: null, newId: () => 'c1' });
+      const results: CaptureResult[] = [];
+      store.onResult((r) => results.push(r));
+      store.submit({ source: 'text', transcript: 'Pay the water bill' });
+      await flush(RESULT_TIMEOUT_MS + 1);
+      expect(store.getPending()[0]?.status).toBe('failed');
+      await flush(5000);
+      expect(store.getPending()).toEqual([]);
+      expect(results).toHaveLength(1);
+    });
+
+    it('a result before the timeout cancels it', async () => {
+      const { store, results } = setup();
+      store.submit({ source: 'text', transcript: 'Pay the water bill' });
+      await flush(200);
+      expect(results).toHaveLength(1);
+      await flush(RESULT_TIMEOUT_MS * 2);
+      expect(store.getPending()).toEqual([]);
     });
   });
 

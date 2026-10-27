@@ -184,6 +184,9 @@ export function useCaptureSession(args: {
     else if (phaseRef.current === 'locked') void save();
   }, [save, startRecording]);
 
+  /** A tap on Today's mic: start locked recording straight away (only from idle). */
+  const startLocked = useCallback(() => startRecording('locked'), [startRecording]);
+
   const openTyping = useCallback(() => {
     if (phaseRef.current === 'holding' || phaseRef.current === 'locked' || phaseRef.current === 'saving') {
       sessionRef.current += 1;
@@ -253,12 +256,13 @@ export function useCaptureSession(args: {
       lock,
       cancelRecording,
       toggleLocked,
+      startLocked,
       openTyping,
       switchToVoice,
       submitTyped,
       cancelAndClose,
       stopAndSave: save,
     }),
-    [phase, transcript, levels, elapsedSec, notice, typed, pressIn, release, lock, cancelRecording, toggleLocked, openTyping, switchToVoice, submitTyped, cancelAndClose, save],
+    [phase, transcript, levels, elapsedSec, notice, typed, pressIn, release, lock, cancelRecording, toggleLocked, startLocked, openTyping, switchToVoice, submitTyped, cancelAndClose, save],
   );
 }

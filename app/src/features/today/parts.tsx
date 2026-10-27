@@ -289,11 +289,15 @@ export function UndoToast({ toast, onUndo, bottom }: { toast: Toast; onUndo: () 
 }
 
 export function MicBar({
-  onPress,
+  onTap,
+  onHold,
   bottomInset,
   onHeight,
 }: {
-  onPress: () => void;
+  /** A tap: open the sheet and start locked recording. */
+  onTap: () => void;
+  /** A long press: open the sheet idle. The hold can't carry over to the sheet's own mic. */
+  onHold: () => void;
   bottomInset: number;
   /** Reports the bar's height, which grows with Dynamic Type, so content can clear it. */
   onHeight?: (height: number) => void;
@@ -310,9 +314,9 @@ export function MicBar({
       <Pressable
         role="button"
         aria-label="Hold to talk, or tap to lock recording"
-        accessibilityHint="Opens capture"
-        onPress={onPress}
-        onLongPress={onPress}
+        accessibilityHint="Opens capture and starts recording"
+        onPress={onTap}
+        onLongPress={onHold}
         style={({ pressed }) => [styles.mic, { backgroundColor: p.accent, transform: [{ scale: pressed ? 0.94 : 1 }] }]}
       >
         <MicIcon color={p.onAccent} />

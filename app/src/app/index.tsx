@@ -7,7 +7,8 @@ export default function TodayRoute() {
   return (
     <TodayScreen
       nav={{
-        openCapture: () => router.push('/capture'),
+        openCapture: (options) =>
+          router.push(options?.startLocked ? { pathname: '/capture', params: { start: 'lock' } } : '/capture'),
         // Only the ID goes in the URL: task titles never leave the in-memory state.
         openTask: (task) => router.push({ pathname: '/task/[id]', params: { id: task.id } }),
         openCheckIn: () => router.push('/check-in'),

@@ -37,6 +37,8 @@ npm run test:ci
 
 - **Speech.** The sheet depends on `SpeechRecognizer` (`src/features/capture/speech/`). The app uses the scripted mock until the Native iOS workstream ships the on-device module; the swap point is `createSpeechRecognizer()` in `speech/index.ts`. Don't add a speech library. The module also needs the microphone and speech-recognition usage strings in `app.json`.
 - **After saving.** `CaptureStore` generates `capture_id` (secure random UUID), sends `captured_at` and the device time zone, and tells Today when the tasks arrive. Results reach the app through `CaptureArrivals` (`src/api/arrivals.ts`), the stand-in for the realtime channel; the mock API implements it with a delay.
+- **Opening the sheet.** A tap on Today's mic opens it and starts locked recording at once; a long press opens it idle (the hold can't carry over to the sheet's own mic).
+- **No result.** If no result arrives within 60 s of the 202, the Sorting row becomes "Couldn't sort your note · Try again"; Try again resends the same `capture_id`. A late result still completes the capture.
 - **Offline.** A capture that fails with `network_error` stays in the store's queue and is sent again when the app returns to the foreground. The queue is in memory only: persistent storage comes with the local SQLite store.
 - **Mock results by keyword** (`src/api/syntheticCapture.ts`): "nothing to add", "never mind" or "thinking out loud" gives zero tasks; "garbled", "fallback" or "mumbling" gives one `needs_review` task; anything else gives one task per clause (up to 10). The mock recognizer's `empty` and `fallback` scripts use these words.
 

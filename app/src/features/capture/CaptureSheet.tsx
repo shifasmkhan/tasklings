@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
@@ -40,19 +40,29 @@ interface Props {
   onClose: () => void;
   /** Swap point for the real recognizer in tests and, later, the native module. */
   createRecognizer?: () => SpeechRecognizer;
+  /** Opened by a tap on Today's mic: start locked recording as soon as the sheet appears. */
+  startLocked?: boolean;
 }
 
 /**
  * The Capture sheet (US-01 voice, US-02 typing). Saving closes it at once; Today takes over from
  * there (US-03).
  */
-export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognizer }: Props) {
+export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognizer, startLocked = false }: Props) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const store = useCaptureStore();
   // One recognizer for the life of the sheet.
   const [recognizer] = useState(() => createRecognizer());
   const s = useCaptureSession({ recognizer, store, onClose });
+
+  const autoStarted = useRef(false);
+  const { startLocked: beginLocked } = s;
+  useEffect(() => {
+    if (!startLocked || autoStarted.current) return;
+    autoStarted.current = true;
+    beginLocked();
+  }, [startLocked, beginLocked]);
 
   const recording = s.phase === 'holding' || s.phase === 'locked';
   const typing = s.phase === 'typing';

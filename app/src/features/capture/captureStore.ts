@@ -42,12 +42,16 @@ export interface CaptureStoreDeps {
   timeZone?: () => string;
 }
 
+/** How long to wait for a result after the 202 before the row offers Try again. */
+export const RESULT_TIMEOUT_MS = 60_000;
+
 interface Entry {
   pending: PendingCapture;
   /** User content: kept in memory only, never logged. */
   request: ProcessCaptureRequest;
   unsubscribe: (() => void) | null;
   inFlight: boolean;
+  timeout: ReturnType<typeof setTimeout> | null;
 }
 
 /**
@@ -98,6 +102,7 @@ export class CaptureStore {
       request,
       unsubscribe: null,
       inFlight: false,
+      timeout: null,
     });
     this.publish();
     void this.send(capture_id);
@@ -139,7 +144,10 @@ export class CaptureStore {
 
   /** Stops listening for every capture. */
   dispose(): void {
-    for (const entry of this.entries.values()) entry.unsubscribe?.();
+    for (const entry of this.entries.values()) {
+      entry.unsubscribe?.();
+      this.clearTimeout(entry);
+    }
     this.entries.clear();
     this.publish();
   }
@@ -148,6 +156,7 @@ export class CaptureStore {
     const entry = this.entries.get(captureId);
     if (!entry || entry.inFlight) return;
     entry.inFlight = true;
+    this.clearTimeout(entry);
     this.setStatus(captureId, 'sending');
     // Listen before asking, so a result that comes back quickly can't be missed.
     if (!entry.unsubscribe && this.arrivals) {
@@ -155,7 +164,18 @@ export class CaptureStore {
     }
     try {
       await this.api.processCapture(entry.request);
-      this.setStatus(captureId, 'sorting');
+      if (this.entries.has(captureId)) {
+        this.setStatus(captureId, 'sorting');
+        // Give up waiting, not listening: a late result still resolves the capture.
+        // Retry resends the same capture_id, which the backend treats as a retry.
+        entry.timeout = setTimeout(() => {
+          entry.timeout = null;
+          if (this.entries.has(captureId)) {
+            logEvent('capture.timed_out', { capture_id: captureId });
+            this.setStatus(captureId, 'failed');
+          }
+        }, RESULT_TIMEOUT_MS);
+      }
     } catch (err) {
       const code = isApiError(err) ? err.code : CLIENT_ERROR_CODES.unknown;
       if (code === CLIENT_ERROR_CODES.network) {
@@ -176,12 +196,18 @@ export class CaptureStore {
     const { capture_id, source } = entry.pending;
     if (!this.entries.has(capture_id)) return;
     entry.unsubscribe?.();
+    this.clearTimeout(entry);
     this.entries.delete(capture_id);
     this.publish();
     logEvent('capture.result', { capture_id, count: arrival.tasks.length });
     const result: CaptureResult = { capture_id, source, tasks: arrival.tasks };
     if (this.resultListeners.size === 0) this.unseen.push(result);
     else for (const listener of [...this.resultListeners]) listener(result);
+  }
+
+  private clearTimeout(entry: Entry): void {
+    if (entry.timeout) clearTimeout(entry.timeout);
+    entry.timeout = null;
   }
 
   private setStatus(captureId: string, status: PendingStatus): void {

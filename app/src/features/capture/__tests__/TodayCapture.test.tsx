@@ -9,7 +9,7 @@ import { QUEUED_DETAIL, SORTING_LABEL } from '@/features/today/parts';
 import { TodayScreen, type TodayNavigation } from '@/features/today/TodayScreen';
 import { localIsoDate } from '@/lib/dates';
 import { CaptureProvider } from '../CaptureProvider';
-import { CaptureStore } from '../captureStore';
+import { CaptureStore, RESULT_TIMEOUT_MS } from '../captureStore';
 
 // Swipe gestures run on the native UI thread and can't load headlessly. These tests don't swipe,
 // so the double renders just the row.
@@ -27,11 +27,11 @@ const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), open
 
 let appStateHandlers: ((state: string) => void)[] = [];
 
-async function renderToday() {
+async function renderToday(delayMs = 1500) {
   const api: MockApiClient = createMockApi({
     tasks: [makeTask({ id: 'existing', title: 'Text the neighbour', kind: 'quick', effort_min: 5 }, TODAY)],
     today: () => TODAY,
-    captureResultDelayMs: 1500,
+    captureResultDelayMs: delayMs,
   });
   let n = 0;
   const store = new CaptureStore({ api, arrivals: null, newId: () => `capture-${++n}` });
@@ -174,6 +174,20 @@ describe('After saving (US-03)', () => {
     );
     await screen.findByLabelText('Today summary');
     expect(screen.getByText('Added 1 task')).toBeOnTheScreen();
+  });
+
+  it('after 60 s with no result the Sorting row becomes "Couldn’t sort your note · Try again"', async () => {
+    const { store } = await renderToday(RESULT_TIMEOUT_MS + 60_000);
+    await save(store, 'text', 'Pay the water bill');
+    await advance(10);
+    // The mock's result is set to arrive after the timeout: nothing arrives in time.
+    await advance(RESULT_TIMEOUT_MS - 20);
+    expect(screen.getByText(SORTING_LABEL)).toBeOnTheScreen();
+    await advance(20);
+    expect(screen.queryByText(SORTING_LABEL)).not.toBeOnTheScreen();
+    expect(screen.getByText('Couldn’t sort your note')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeOnTheScreen();
+    expect(screen.getByText('Pay the water bill')).toBeOnTheScreen();
   });
 
   describe('offline (US-01)', () => {
