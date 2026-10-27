@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
@@ -50,7 +50,8 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const store = useCaptureStore();
-  const recognizer = useMemo(() => createRecognizer(), [createRecognizer]);
+  // One recognizer for the life of the sheet.
+  const [recognizer] = useState(() => createRecognizer());
   const s = useCaptureSession({ recognizer, store, onClose });
 
   const recording = s.phase === 'holding' || s.phase === 'locked';
