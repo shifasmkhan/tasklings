@@ -15,7 +15,7 @@
     "eval:dry": "node evals/cli.ts --dry-run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.133.0"
+    "@anthropic-ai/sdk": "0.136.0"
   },
   "devDependencies": {
     "@types/node": "22.20.4",
