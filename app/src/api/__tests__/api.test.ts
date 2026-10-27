@@ -38,23 +38,43 @@ describe('toApiError', () => {
     expect(noDetails.message).toBe('');
   });
 
-  it('keeps PostgREST errors without a stable code in hint as bad_response', () => {
+  it('maps a PostgREST error with no valid hint by HTTP status, without its server text', () => {
     // Platform errors: no hint (permission denied, unique violation) or a prose hint.
     const denied = toApiError(
       { code: '42501', message: 'permission denied for table tasks', details: null, hint: null },
       403,
     );
-    expect(denied.code).toBe('bad_response');
-    expect(denied.status).toBe(403);
+    expect(denied).toMatchObject({ code: 'forbidden', status: 403 });
     expect(denied.message).not.toContain('permission denied');
-    const dup = toApiError({ code: '23505', message: 'duplicate key', details: 'Key (id)=(x) exists.' }, 409);
-    expect(dup.code).toBe('bad_response');
+
+    const expired = toApiError({ code: 'PGRST301', message: 'JWT expired', details: null, hint: null }, 401);
+    expect(expired).toMatchObject({ code: 'forbidden', status: 401 });
+    expect(expired.message).not.toContain('JWT');
+
+    const dup = toApiError({ code: '23505', message: 'duplicate key', details: 'Key (id)=(x) exists.', hint: null }, 409);
+    expect(dup).toMatchObject({ code: 'internal_error', status: 409 });
     expect(dup.message).not.toContain('Key (id)');
+    expect(dup.message).not.toContain('duplicate');
+
     const prose = toApiError(
-      { code: 'PGRST202', message: 'Could not find the function', details: null, hint: 'Perhaps you meant to call public.today_tasks' },
+      { code: 'PGRST202', message: 'Could not find the function', details: null, hint: 'Perhaps you meant public.today_tasks' },
       404,
     );
-    expect(prose.code).toBe('bad_response');
+    expect(prose).toMatchObject({ code: 'internal_error', status: 404 });
+    expect(prose.message).not.toContain('Perhaps');
+
+    const forbiddenProse = toApiError({ code: '42501', message: 'denied', details: null, hint: 'Grant SELECT' }, 403);
+    expect(forbiddenProse.code).toBe('forbidden');
+
+    expect(toApiError({ code: 'XX000', message: 'boom', details: null, hint: null }, null).code).toBe('internal_error');
+  });
+
+  it('keeps a body that is not a recognised error shape as bad_response', () => {
+    // Missing details/hint keys, so not PostgREST; and not the edge-function envelope.
+    expect(toApiError({ code: '42501', message: 'permission denied' }, 403).code).toBe('bad_response');
+    expect(toApiError({ error: 'invalid_grant', error_description: 'secret' }, 400).code).toBe('bad_response');
+    expect(toApiError('<html>proxy error</html>', 502).code).toBe('bad_response');
+    expect(toApiError([], 500).code).toBe('bad_response');
   });
 });
 
