@@ -295,7 +295,7 @@ grant select on public.task_steps, public.task_enrichments to authenticated;
 
 -- device_tokens: register-device upserts (insert + update of the conflict columns).
 grant select, delete on public.device_tokens to authenticated;
-grant insert (user_id, apns_token) on public.device_tokens to authenticated;
+grant insert (user_id, apns_token, last_seen_at) on public.device_tokens to authenticated;
 grant update (apns_token, last_seen_at) on public.device_tokens to authenticated;
 
 -- apple_credentials: service role only.

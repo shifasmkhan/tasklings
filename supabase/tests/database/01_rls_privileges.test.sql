@@ -156,5 +156,39 @@ select results_eq(
   $$ values (10, private.user_today('00000000-0000-4000-a000-00000000000a'), private.user_today('00000000-0000-4000-a000-00000000000a'), 0, 'open') $$,
   'insert defaults: planned for the user today, effort_min_initial = effort_min');
 
+-- ---------------------------------------------------------------------------
+-- The exact statements the edge functions issue with the caller's JWT work for A.
+-- ---------------------------------------------------------------------------
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-a000-00000000000a","role":"authenticated"}', true);
+select lives_ok($$ insert into public.captures (id, source, transcript, status)
+                   values ('10000000-0000-4000-a000-0000000000a2', 'voice', 'synthetic', 'parsing') $$,
+                'process-capture: insert capture');
+select lives_ok($$ insert into public.tasks (capture_id, title, kind, effort_min, due_date, sort_order)
+                   values ('10000000-0000-4000-a000-0000000000a2', 'Review your new capture', 'quick', 5, null, 0) $$,
+                'process-capture: insert tasks linked to own capture');
+select lives_ok($$ update public.captures set status = 'done', error = null where id = '10000000-0000-4000-a000-0000000000a2' $$,
+                'process-capture: mark capture done');
+select lives_ok($$ insert into public.device_tokens (apns_token, last_seen_at) values (repeat('ab', 32), now())
+                   on conflict (user_id, apns_token) do update
+                   set apns_token = excluded.apns_token, last_seen_at = excluded.last_seen_at $$,
+                'register-device: upsert existing token');
+select is((select count(*)::int from public.device_tokens), 1, 'upsert did not duplicate the token');
+select lives_ok($$ select user_id, display_name, timezone, brief_time, checkin_time, created_at, last_rollover_on from public.profiles $$,
+                'export-data: profile columns are readable');
+select lives_ok($$ select * from public.profiles $$,
+                'select * on profiles works: no hidden column lives there');
+reset role;
+
+-- User B cannot upsert onto A's device row (conflict target is per user, so B gets a new row).
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-a000-00000000000b","role":"authenticated"}', true);
+select lives_ok($$ insert into public.device_tokens (apns_token) values (repeat('ab', 32))
+                   on conflict (user_id, apns_token) do update set last_seen_at = excluded.last_seen_at $$,
+                'B registering the same APNs token creates B''s own row');
+reset role;
+select is((select count(*)::int from public.device_tokens where apns_token = repeat('ab', 32)), 2,
+          'A row untouched; B has a separate row');
+
 select * from finish();
 rollback;

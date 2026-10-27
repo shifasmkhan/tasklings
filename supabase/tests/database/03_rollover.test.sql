@@ -5,6 +5,10 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select no_plan();
 
+-- rollover_tasks counts users across the whole database; start from an empty one (seed data is
+-- removed inside this transaction and comes back on rollback).
+delete from auth.users;
+
 insert into auth.users (id, email) values
   ('00000000-0000-4000-a000-00000000000a', 'user-a@example.test'),
   ('00000000-0000-4000-a000-00000000000b', 'user-b@example.test');
