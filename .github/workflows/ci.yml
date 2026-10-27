@@ -33,7 +33,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # A venv avoids the runner's externally-managed system Python (PEP 668).
+      - name: Install Semgrep
+        run: |
+          python3 -m venv "$RUNNER_TEMP/semgrep"
+          "$RUNNER_TEMP/semgrep/bin/pip" install --quiet "semgrep==1.182.0"
+      # Findings are surfaced as PR annotations, so they're readable without the raw log.
+      # Paths and messages are escaped so file names can't inject workflow commands.
       - name: Run Semgrep
         run: |
-          python3 -m pip install --quiet "semgrep==1.182.0"
-          semgrep scan --config p/default --config p/secrets --error --metrics off
+          status=0
+          "$RUNNER_TEMP/semgrep/bin/semgrep" scan --config p/default --config p/secrets \
+            --metrics off --json --output semgrep.json || status=$?
+          esc='gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A")'
+          jq -r ".results[] | \"::error file=\(.path | $esc),line=\(.start.line)::\(.check_id): \(.extra.message | $esc)\"" semgrep.json
+          jq -r ".errors[]? | \"::warning::semgrep: \((.message // .type | tostring) | $esc)\"" semgrep.json
+          count=$(jq '.results | length' semgrep.json)
+          echo "Semgrep findings: $count (exit $status)"
+          [ "$count" -eq 0 ] && [ "$status" -eq 0 ]
