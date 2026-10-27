@@ -7,5 +7,6 @@ type LogValue = string | number | boolean | null;
 
 export function logEvent(event: string, fields: Partial<Record<LogField, LogValue>> = {}): void {
   if (!__DEV__) return;
-  console.info(`[tasklings] ${event}`, fields);
+  // Constant format string: the event name is an argument, so it can't inject format specifiers.
+  console.info('[tasklings] %s', event, fields);
 }
