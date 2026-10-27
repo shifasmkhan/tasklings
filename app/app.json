@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Tasklings",
+    "slug": "tasklings",
+    "scheme": "tasklings",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.shifasmkhan.tasklings",
+      "supportsTablet": false
+    },
+    "updates": {
+      "enabled": false
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
