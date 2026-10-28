@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -27,7 +27,16 @@ function formatHeaderDate(date: Date): string {
     .toUpperCase();
 }
 
-export function TodayScreen({ nav, now = new Date() }: { nav: TodayNavigation; now?: Date }) {
+export function TodayScreen({
+  nav,
+  now = new Date(),
+  refreshKey = 0,
+}: {
+  nav: TodayNavigation;
+  now?: Date;
+  /** Bump this to reload the list, e.g. when Today comes back into focus after Task detail (US-05). */
+  refreshKey?: number;
+}) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const t = useToday();
@@ -36,6 +45,11 @@ export function TodayScreen({ nav, now = new Date() }: { nav: TodayNavigation; n
   const [doneOpen, setDoneOpen] = useState(false);
   const [measuredBar, setMeasuredBar] = useState<number | null>(null);
   const barHeight = measuredBar ?? MIC_BAR_ESTIMATE + Math.max(insets.bottom, 12);
+
+  const { reload } = t;
+  useEffect(() => {
+    if (refreshKey > 0) void reload();
+  }, [refreshKey, reload]);
 
   const reviewTask = firstNeedingReview(t.open);
 

@@ -13,10 +13,19 @@ interface Seed {
   carry: number;
   dueOffset: number | null;
   needsReview?: boolean;
+  script?: string;
 }
 
 const SEEDS: Seed[] = [
-  { id: 'q1', kind: 'quick', title: 'Call the dentist to move the cleaning', effort: 5, carry: 0, dueOffset: null },
+  {
+    id: 'q1',
+    kind: 'quick',
+    title: 'Call the dentist to move the cleaning',
+    effort: 5,
+    carry: 0,
+    dueOffset: null,
+    script: 'Hi, I would like to move my cleaning to a later week. Do you have anything open in the next two weeks?',
+  },
   { id: 'q2', kind: 'quick', title: 'Reply to the building manager about the fence', effort: 10, carry: 1, dueOffset: null },
   { id: 'q3', kind: 'quick', title: 'Pay the water bill', effort: 5, carry: 0, dueOffset: 0 },
   { id: 'e1', kind: 'errand', title: 'Return the package at the post office', effort: 20, carry: 0, dueOffset: 0 },
@@ -33,6 +42,21 @@ const SEEDS: Seed[] = [
     needsReview: true,
   },
 ];
+
+/**
+ * Placeholder "Found for you" data (Apple Maps phone, address and hours only), keyed by task id.
+ * The API has no enrichments endpoint yet, so the app reads this from the mock. All synthetic.
+ */
+export function mockEnrichments(taskId: string): { type: 'phone' | 'address' | 'hours'; value: string }[] {
+  if (taskId === uuidFor('q1')) return [{ type: 'phone', value: '(555) 010-0142' }];
+  if (taskId === uuidFor('e1')) {
+    return [
+      { type: 'address', value: '100 Example Street, Springfield' },
+      { type: 'hours', value: 'Open until 6 PM today' },
+    ];
+  }
+  return [];
+}
 
 function uuidFor(seedId: string): string {
   const hex = Array.from(seedId)
@@ -82,6 +106,7 @@ export function seedTasks(today: IsoDate): Task[] {
         carry_count: s.carry,
         due_date: s.dueOffset === null ? null : addDays(today, s.dueOffset),
         needs_review: s.needsReview ?? false,
+        script: s.script ?? null,
         sort_order: i,
       },
       today,
