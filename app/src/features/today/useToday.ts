@@ -183,19 +183,21 @@ export function useToday(today: string = localIsoDate()) {
   const captures = useOptionalCaptureStore();
 
   const undoCapture = useCallback(
-    async (added: Task[]) => {
+    async (captureId: string, added: Task[]) => {
       dismissToast();
       const ids = new Set(added.map((t) => t.id));
       setOpen((o) => o.filter((t) => !ids.has(t.id)));
-      // Dropping is the only way to take a task back: the contracts have no delete.
-      const results = await Promise.allSettled(added.map((t) => api.dropTask(t.id)));
-      const failed = results.filter((r) => r.status === 'rejected').length;
-      if (failed > 0) {
-        logEvent('capture.undo_failed', { count: failed });
-        showToast("Couldn't undo. Try again.", null);
+      try {
+        // One call removes the capture's tasks, if they are all still untouched (30 seconds).
+        const removed = await api.undoCapture(captureId);
+        logEvent('capture.undo', { capture_id: captureId, count: removed });
+      } catch (err) {
+        const code = isApiError(err) ? err.code : 'unknown_error';
+        logEvent('capture.undo_failed', { capture_id: captureId, code });
+        // Too late, or a task was already changed: the tasks stay, and so does the list. Say nothing.
+        // Any other failure: say so. Either way reload, so the list tells the truth.
+        if (code !== 'undo_expired') showToast("Couldn't undo. Try again.", null);
         void load();
-      } else {
-        logEvent('capture.undo', { count: added.length });
       }
     },
     [api, dismissToast, load, showToast],
@@ -211,7 +213,7 @@ export function useToday(today: string = localIsoDate()) {
         return;
       }
       setOpen((o) => [...o, ...added.filter((t) => t.status === 'open' && !o.some((x) => x.id === t.id))]);
-      showToast(`Added ${plural(added.length, 'task', 'tasks')}`, () => void undoCapture(added));
+      showToast(`Added ${plural(added.length, 'task', 'tasks')}`, () => void undoCapture(result.capture_id, added));
     });
   }, [captures, showToast, undoCapture]);
 

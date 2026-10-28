@@ -1,3 +1,4 @@
+import { createLiveApi, readLiveConfig } from './live';
 import { createMockApi } from './mock';
 import type { ApiClient } from './types';
 
@@ -7,11 +8,15 @@ export { hasArrivals } from './arrivals';
 export { ApiError, isApiError, toApiError } from './errors';
 export { createMockApi } from './mock';
 export { createSupabaseApi } from './supabase';
+export { createLiveApi, readLiveConfig } from './live';
 
 /**
- * The app uses the in-memory mock until the backend lands and sign-in is built (US-10).
- * Swapping in createSupabaseApi is a one-line change here; screens depend only on ApiClient.
+ * The app uses the in-memory mock unless both EXPO_PUBLIC_SUPABASE_URL and
+ * EXPO_PUBLIC_SUPABASE_ANON_KEY are set, and then it talks to that project. Sign-in is still a
+ * stub (US-10), so the live client has no session and its calls fail with `unauthenticated`.
+ * Screens depend only on ApiClient.
  */
 export function createDefaultApi(): ApiClient {
-  return createMockApi();
+  const live = readLiveConfig();
+  return live ? createLiveApi(live) : createMockApi();
 }

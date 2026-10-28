@@ -63,7 +63,8 @@ from unnest(array['id', 'user_id', 'capture_id', 'effort_min_initial', 'first_pl
 select ok(not has_column_privilege('authenticated', 'public.tasks', col, 'INSERT'), 'authenticated may not insert tasks.' || col)
 from unnest(array['id', 'effort_min_initial', 'planned_for', 'first_planned_for', 'carry_count', 'status',
                   'completed_at', 'undo_planned_for']) as col;
-select ok(not has_table_privilege('authenticated', 'public.tasks', 'DELETE'), 'tasks are never deleted by clients');
+select ok(has_table_privilege('authenticated', 'public.tasks', 'DELETE'), 'authenticated holds DELETE on tasks only for undo_capture (see 06_undo_capture.test.sql: a trigger refuses it outside the RPC)');
+select ok(not has_table_privilege('anon', 'public.tasks', 'DELETE'), 'anon cannot delete tasks');
 
 -- ---------------------------------------------------------------------------
 -- Anonymous callers get nothing.

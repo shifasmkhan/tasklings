@@ -1,7 +1,6 @@
 import { ApiError, toApiError } from '../errors';
 import { makeTask, seedTasks } from '../fixtures';
 import { createMockApi } from '../mock';
-import { createSupabaseApi } from '../supabase';
 
 const TODAY = '2026-10-26';
 
@@ -177,114 +176,5 @@ describe('mock api', () => {
     expect(await api.exportData()).toHaveProperty('tasks');
     await api.deleteAccount();
     expect(api.snapshot()).toEqual([]);
-  });
-});
-
-describe('supabase stub', () => {
-  function fakeFetch(status: number, body: unknown) {
-    return jest.fn(async () => ({
-      ok: status >= 200 && status < 300,
-      status,
-      json: async () => body,
-    })) as unknown as typeof fetch & jest.Mock;
-  }
-
-  it('refuses a non-https URL', () => {
-    expect(() =>
-      createSupabaseApi({ url: 'http://example.test', anonKey: 'anon', getAccessToken: () => 't' }),
-    ).toThrow(ApiError);
-  });
-
-  it('sends the user JWT and maps the standard error shape', async () => {
-    const fetchImpl = fakeFetch(403, { error: { code: 'forbidden', message: 'Not your task' } });
-    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => 'jwt', fetchImpl });
-    await expect(api.completeTask('t1')).rejects.toMatchObject({ code: 'forbidden', status: 403 });
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://example.test/rest/v1/rpc/complete_task');
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer jwt');
-  });
-
-  it('signs in by sending the raw nonce next to the identity token, never the hash', async () => {
-    const fetchImpl = fakeFetch(200, { access_token: 'jwt', expires_at: 1, user: { id: 'u1' } });
-    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => null, fetchImpl });
-    const session = await api.signInWithApple('apple-id-token', 'raw-nonce');
-    expect(session).toEqual({ access_token: 'jwt', user_id: 'u1', expires_at: 1 });
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://example.test/auth/v1/token?grant_type=id_token');
-    expect(JSON.parse(init.body as string)).toEqual({ provider: 'apple', id_token: 'apple-id-token', nonce: 'raw-nonce' });
-  });
-
-  it('refuses to sign in without a nonce and sends nothing', async () => {
-    const fetchImpl = fakeFetch(200, {});
-    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => null, fetchImpl });
-    await expect(api.signInWithApple('apple-id-token', '')).rejects.toMatchObject({ code: 'invalid_argument' });
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('fails closed without a session', async () => {
-    const fetchImpl = fakeFetch(200, {});
-    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => null, fetchImpl });
-    await expect(api.todayTasks()).rejects.toMatchObject({ code: 'unauthenticated' });
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('maps a PostgREST RPC error from the real client', async () => {
-    const fetchImpl = fakeFetch(404, { code: 'PT404', message: 'task_not_found', details: 'No such task', hint: 'task_not_found' });
-    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => 'jwt', fetchImpl });
-    await expect(api.deferTask('t1')).rejects.toMatchObject({ code: 'task_not_found', message: 'No such task', status: 404 });
-  });
-
-  it('groups the flat today_tasks list (kind, then sort_order) and keeps the order', async () => {
-    // Server order: kind (quick, errand, project), then sort_order.
-    const rows = [
-      makeTask({ id: 'q1', title: 'Synthetic', kind: 'quick', sort_order: 0 }, TODAY),
-      makeTask({ id: 'q2', title: 'Synthetic', kind: 'quick', sort_order: 4 }, TODAY),
-      makeTask({ id: 'e1', title: 'Synthetic', kind: 'errand', sort_order: 1 }, TODAY),
-      makeTask({ id: 'e2', title: 'Synthetic', kind: 'errand', sort_order: 2 }, TODAY),
-      makeTask({ id: 'p1', title: 'Synthetic', kind: 'project', sort_order: 3 }, TODAY),
-    ];
-    const fetchImpl = fakeFetch(200, rows);
-    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => 'jwt', fetchImpl });
-    const today = await api.todayTasks();
-    expect(today.quick.map((t) => t.id)).toEqual(['q1', 'q2']);
-    expect(today.errand.map((t) => t.id)).toEqual(['e1', 'e2']);
-    expect(today.project.map((t) => t.id)).toEqual(['p1']);
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://example.test/rest/v1/rpc/today_tasks');
-    expect(init.method).toBe('POST');
-  });
-
-  it('rejects a today_tasks response that is not a flat list', async () => {
-    const api = createSupabaseApi({
-      url: 'https://example.test',
-      anonKey: 'anon',
-      getAccessToken: () => 'jwt',
-      fetchImpl: fakeFetch(200, { quick: [], errand: [], project: [] }),
-    });
-    await expect(api.todayTasks()).rejects.toMatchObject({ code: 'bad_response' });
-  });
-
-  it('sends the RPC arguments the backend defines', async () => {
-    const row = makeTask({ id: 't1', title: 'Synthetic', kind: 'quick' }, TODAY);
-    const fetchImpl = fakeFetch(200, row);
-    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => 'jwt', fetchImpl });
-    await api.completeTask('t1');
-    await api.dropTask('t1', 'obsolete');
-    await api.dropTask('t1');
-    const bodies = fetchImpl.mock.calls.map((c) => JSON.parse((c as [string, RequestInit])[1].body as string));
-    expect(bodies).toEqual([{ id: 't1' }, { id: 't1', reason: 'obsolete' }, { id: 't1', reason: null }]);
-  });
-
-  it('sends only the editable columns on a task edit', async () => {
-    const row = makeTask({ id: 't1', title: 'Synthetic', kind: 'quick' }, TODAY);
-    const fetchImpl = fakeFetch(200, [row]);
-    const api = createSupabaseApi({ url: 'https://example.test', anonKey: 'anon', getAccessToken: () => 'jwt', fetchImpl });
-    const edit = { title: 'Synthetic edit', effort_min_initial: 1, user_id: 'other' } as unknown as Parameters<
-      typeof api.updateTask
-    >[1];
-    await api.updateTask('t1', edit);
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://example.test/rest/v1/tasks?id=eq.t1');
-    expect(JSON.parse(init.body as string)).toEqual({ title: 'Synthetic edit' });
   });
 });

@@ -4,6 +4,7 @@ import { makeTask, MOCK_USER_ID, seedTasks } from './fixtures';
 import { synthesizeCapture } from './syntheticCapture';
 import type {
   ApiClient,
+  CaptureSource,
   DroppedReason,
   IsoDate,
   ProcessCaptureRequest,
@@ -37,9 +38,15 @@ export interface MockApiClient extends ApiClient {
   failNext(code: string, message?: string): void;
   /** Test hook: a copy of every stored task. */
   snapshot(): Task[];
+  /** Test hook: the source stored for an accepted capture (captures.source), or undefined. */
+  captureSource(captureId: string): CaptureSource | undefined;
   /** Stand-in for the realtime channel: where a capture's tasks arrive. */
   arrivals: CaptureArrivals;
 }
+
+const CAPTURE_SOURCES: readonly string[] = ['voice', 'text', 'siri', 'widget'];
+/** undo_capture works for this long after the capture finished (supabase/README.md). */
+export const UNDO_CAPTURE_WINDOW_MS = 30_000;
 
 const EDITABLE: readonly string[] = TASK_EDITABLE_FIELDS;
 
@@ -64,7 +71,10 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
   let pendingFailure: ApiError | null = null;
   const resultDelay = options.captureResultDelayMs ?? 1200;
   // Captures already accepted: a retry of the same capture_id is idempotent, like the backend.
-  const captures = new Set<string>();
+  // finishedAt is when the capture became `done` (the start of the undo_capture window).
+  const captures = new Map<string, { source: CaptureSource; finishedAt: number | null }>();
+  // Tasks changed since they were inserted (the backend sees this as updated_at moving).
+  const touched = new Set<string>();
   const arrivalListeners = new Map<string, Set<(arrival: CaptureArrival) => void>>();
   const arrived = new Map<string, CaptureArrival>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -89,6 +99,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
 
   function write(prev: Task, next: Partial<Task>, recordHistory = true): Task {
     if (recordHistory) history.set(prev.id, [...(history.get(prev.id) ?? []), prev]);
+    touched.add(prev.id);
     const updated: Task = { ...prev, ...next, updated_at: now().toISOString() };
     tasks.set(updated.id, updated);
     return { ...updated };
@@ -124,6 +135,8 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
   }
 
   function deliver(arrival: CaptureArrival): void {
+    const capture = captures.get(arrival.capture_id);
+    if (capture) capture.finishedAt = now().getTime();
     arrived.set(arrival.capture_id, arrival);
     for (const listener of [...(arrivalListeners.get(arrival.capture_id) ?? [])]) {
       listener({ ...arrival, tasks: arrival.tasks.map((t) => ({ ...t })) });
@@ -155,6 +168,8 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
   return {
     arrivals,
 
+    captureSource: (captureId) => captures.get(captureId)?.source,
+
     failNext(code, message = 'Injected failure') {
       pendingFailure = new ApiError(code, message, 500);
     },
@@ -184,8 +199,12 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
         if (!request.timezone || Number.isNaN(Date.parse(request.captured_at))) {
           throw new ApiError('invalid_request', 'captured_at and timezone are required', 400);
         }
+        // Strict, like the backend: omitted means voice; anything else outside the list is refused.
+        if (request.source !== undefined && !CAPTURE_SOURCES.includes(request.source)) {
+          throw new ApiError('invalid_request', 'source must be voice, text, siri or widget', 400);
+        }
         if (!captures.has(request.capture_id)) {
-          captures.add(request.capture_id);
+          captures.set(request.capture_id, { source: request.source ?? 'voice', finishedAt: null });
           // 202 now; the tasks follow after the "extraction" delay, as they will by realtime.
           const timer = setTimeout(() => {
             timers.delete(timer);
@@ -208,6 +227,26 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
           errand: open.filter((t) => t.kind === 'errand').map((t) => ({ ...t })),
           project: open.filter((t) => t.kind === 'project').map((t) => ({ ...t })),
         };
+      });
+    },
+
+    undoCapture(captureId: string): Promise<number> {
+      return call(() => {
+        if (!captureId) throw new ApiError('invalid_argument', 'capture_id is required', 400);
+        const capture = captures.get(captureId);
+        const expired = () => new ApiError('undo_expired', 'This capture can no longer be undone', 409);
+        // Unknown, unfinished and too-old captures all look the same, like another user's.
+        if (!capture || capture.finishedAt === null || now().getTime() - capture.finishedAt > UNDO_CAPTURE_WINDOW_MS) {
+          throw expired();
+        }
+        const created = [...tasks.values()].filter((t) => t.capture_id === captureId);
+        if (created.some((t) => t.status !== 'open' || touched.has(t.id))) throw expired();
+        for (const t of created) {
+          tasks.delete(t.id);
+          history.delete(t.id);
+          touched.delete(t.id);
+        }
+        return created.length;
       });
     },
 
@@ -289,6 +328,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
       return call(() => {
         tasks.clear();
         history.clear();
+        touched.clear();
         for (const timer of timers) clearTimeout(timer);
         timers.clear();
       });

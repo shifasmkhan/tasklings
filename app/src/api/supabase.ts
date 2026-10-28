@@ -1,4 +1,19 @@
+// supabase-js stays behind this one file; polyfill first, because supabase-js builds URLs with
+// URL.searchParams, which React Native's built-in URL only approximates.
+import 'react-native-url-polyfill/auto';
+
+import {
+  createClient,
+  FunctionsFetchError,
+  FunctionsHttpError,
+  isAuthRetryableFetchError,
+  type SupabaseClient,
+} from '@supabase/supabase-js';
+
+import type { CaptureArrivals } from './arrivals';
 import { ApiError, CLIENT_ERROR_CODES, toApiError } from './errors';
+import type { SessionStorage } from './secureSessionStorage';
+import { createSupabaseArrivals, TASK_COLUMNS } from './supabaseArrivals';
 import type {
   ApiClient,
   DroppedReason,
@@ -12,83 +27,166 @@ import type {
 } from './types';
 import { TASK_EDITABLE_FIELDS } from './types';
 
-// Thin stub of the real backend behind the same ApiClient interface. It is not wired into
-// the app yet (the mock is the default) and has no tests against a live project.
-// RPC names, arguments, the today_tasks() shape and error codes follow supabase/README.md
-// (backend PR #4): RPC args are { id } and { id, reason }; today_tasks() returns a flat array
-// ordered by kind (quick, errand, project), then sort_order.
+// The real backend behind the ApiClient interface, on supabase-js. RPC names, arguments, the
+// today_tasks() shape and error codes follow supabase/README.md: RPC args are { id }, { id, reason }
+// and { capture_id }; today_tasks() returns a flat array ordered by kind (quick, errand, project),
+// then sort_order. Sign-in itself is US-10: until it exists there is no session, and every call
+// except signInWithApple fails with `unauthenticated` without touching the network.
 
 export interface SupabaseConfig {
   url: string;
-  /** Public anon key. Never the service-role key: that never ships in the app. */
+  /**
+   * Public by design (it is in every build of the app): the anon / publishable key. It carries no
+   * privileges beyond what row-level security gives the signed-in user. A service-role or secret
+   * key is refused.
+   */
   anonKey: string;
-  /** Returns the current user JWT, or null when signed out. */
-  getAccessToken: () => string | null;
+  /** Where the session is kept. The app passes the Keychain-backed storage (secureSessionStorage.ts). */
+  storage: SessionStorage;
+  /** Refresh the access token in the background. Default true; tests turn it off. */
+  autoRefreshToken?: boolean;
   fetchImpl?: typeof fetch;
+  /** Test seam: use this client instead of creating one. */
+  client?: SupabaseClient;
+}
+
+export interface SupabaseApiClient extends ApiClient {
+  /** Where a capture's tasks arrive: realtime on the captures row, then a read of its tasks. */
+  arrivals: CaptureArrivals;
+  /** The supabase-js client, for the app's auth wiring (AppState refresh, sign-in screens in US-10). */
+  readonly client: SupabaseClient;
 }
 
 const KINDS: readonly TaskKind[] = ['quick', 'errand', 'project'];
 const EDITABLE: readonly string[] = TASK_EDITABLE_FIELDS;
+const LOOPBACK = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/;
 
-export function createSupabaseApi(config: SupabaseConfig): ApiClient {
-  const base = config.url.replace(/\/+$/, '');
-  if (!base.startsWith('https://')) {
-    throw new ApiError('invalid_config', 'Supabase URL must use https');
+/** Refuses keys that must never ship in an app: service-role JWTs and new-style secret keys. */
+export function assertPublicKey(key: string): void {
+  if (!key || /^sb_secret_/.test(key)) {
+    throw new ApiError('invalid_config', 'Use the public anon key, never a secret key');
   }
-  const doFetch = config.fetchImpl ?? fetch;
-
-  async function request<T>(path: string, init: { method: string; body?: unknown; auth?: boolean; headers?: Record<string, string> }): Promise<T> {
-    const headers: Record<string, string> = {
-      apikey: config.anonKey,
-      'Content-Type': 'application/json',
-      ...init.headers,
-    };
-    if (init.auth !== false) {
-      const token = config.getAccessToken();
-      if (!token) throw new ApiError('unauthenticated', 'Sign in first', 401);
-      headers.Authorization = `Bearer ${token}`;
-    }
-    let res: Response;
+  const payload = key.split('.')[1];
+  if (key.split('.').length === 3 && payload) {
     try {
-      res = await doFetch(`${base}${path}`, {
-        method: init.method,
-        headers,
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      });
-    } catch {
-      throw new ApiError(CLIENT_ERROR_CODES.network, 'Network request failed');
+      const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { role?: unknown };
+      if (json.role === 'service_role') {
+        throw new ApiError('invalid_config', 'Use the public anon key, never the service-role key');
+      }
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      // Not a decodable JWT (a publishable key, or a test value): nothing more to check.
     }
-    if (res.status === 204) return undefined as T;
+  }
+}
+
+interface PgError {
+  code?: string;
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+}
+
+function fromPostgrest(error: PgError, status: number): ApiError {
+  // postgrest-js reports a request that never got an answer as status 0.
+  if (status === 0) return new ApiError(CLIENT_ERROR_CODES.network, 'Network request failed');
+  return toApiError(
+    { code: error.code ?? '', message: error.message ?? '', details: error.details ?? null, hint: error.hint ?? null },
+    status,
+  );
+}
+
+function unwrap<T>(res: { data: unknown; error: PgError | null; status: number }): T {
+  if (res.error) throw fromPostgrest(res.error, res.status);
+  return res.data as T;
+}
+
+async function fromFunctionsError(error: unknown): Promise<ApiError> {
+  if (error instanceof FunctionsFetchError) return new ApiError(CLIENT_ERROR_CODES.network, 'Network request failed');
+  if (error instanceof FunctionsHttpError) {
+    const response = error.context as Response;
     let body: unknown = null;
     try {
-      body = await res.json();
+      body = await response.json();
     } catch {
       body = null;
     }
-    if (!res.ok) throw toApiError(body, res.status);
-    return body as T;
+    return toApiError(body, typeof response.status === 'number' ? response.status : null);
+  }
+  return new ApiError(CLIENT_ERROR_CODES.unknown, 'Request failed');
+}
+
+export function createSupabaseApi(config: SupabaseConfig): SupabaseApiClient {
+  const base = config.url.replace(/\/+$/, '');
+  if (!base.startsWith('https://') && !LOOPBACK.test(base)) {
+    throw new ApiError('invalid_config', 'Supabase URL must use https');
+  }
+  assertPublicKey(config.anonKey);
+
+  const client =
+    config.client ??
+    createClient(base, config.anonKey, {
+      auth: {
+        storage: config.storage,
+        storageKey: 'tasklings.auth',
+        persistSession: true,
+        autoRefreshToken: config.autoRefreshToken ?? true,
+        // No browser URL to read a session from in a native app.
+        detectSessionInUrl: false,
+      },
+      global: config.fetchImpl ? { fetch: config.fetchImpl } : undefined,
+      // Realtime is used only for the user's own captures; keep the connection quiet.
+      realtime: { params: { eventsPerSecond: 5 } },
+    });
+
+  /** Fails closed: no session, no request (and the anon key is never used as a bearer). */
+  async function requireSession(): Promise<void> {
+    const { data, error } = await client.auth.getSession();
+    if (error || !data.session) throw new ApiError('unauthenticated', 'Sign in first', 401);
   }
 
-  const rpc = <T>(name: string, args: Record<string, unknown> = {}) =>
-    request<T>(`/rest/v1/rpc/${name}`, { method: 'POST', body: args });
+  async function rpc<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+    await requireSession();
+    return unwrap<T>(await client.rpc(name, args));
+  }
 
-  const fn = <T>(name: string, body?: unknown) =>
-    request<T>(`/functions/v1/${name}`, { method: 'POST', body: body ?? {} });
+  async function fn<T>(name: string, body?: unknown): Promise<T> {
+    await requireSession();
+    const { data, error } = await client.functions.invoke(name, { body: body ?? {} });
+    if (error) throw await fromFunctionsError(error);
+    return data as T;
+  }
 
   return {
+    client,
+    arrivals: createSupabaseArrivals(client),
+
     async signInWithApple(identityToken: string, rawNonce: string): Promise<Session> {
       if (!identityToken || !rawNonce) {
         throw new ApiError('invalid_argument', 'Identity token and nonce are required', 400);
       }
-      const res = await request<{ access_token: string; expires_at: number; user: { id: string } }>(
-        '/auth/v1/token?grant_type=id_token',
-        { method: 'POST', auth: false, body: { provider: 'apple', id_token: identityToken, nonce: rawNonce } },
-      );
-      return { access_token: res.access_token, user_id: res.user.id, expires_at: res.expires_at };
+      const { data, error } = await client.auth.signInWithIdToken({
+        provider: 'apple',
+        token: identityToken,
+        nonce: rawNonce,
+      });
+      if (error || !data.session) {
+        // The server's text is never passed on.
+        if (error && isAuthRetryableFetchError(error)) {
+          throw new ApiError(CLIENT_ERROR_CODES.network, 'Network request failed');
+        }
+        throw new ApiError('unauthenticated', 'Sign in failed', error?.status ?? 401);
+      }
+      const { session } = data;
+      return {
+        access_token: session.access_token,
+        user_id: session.user.id,
+        expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + session.expires_in,
+      };
     },
 
     processCapture(req: ProcessCaptureRequest): Promise<ProcessCaptureResponse> {
-      return fn('process-capture', req);
+      return fn<ProcessCaptureResponse>('process-capture', req);
     },
 
     async todayTasks(): Promise<TodayTasks> {
@@ -104,6 +202,14 @@ export function createSupabaseApi(config: SupabaseConfig): ApiClient {
       return grouped;
     },
 
+    async undoCapture(captureId: string): Promise<number> {
+      const removed = await rpc<unknown>('undo_capture', { capture_id: captureId });
+      if (typeof removed !== 'number') {
+        throw new ApiError(CLIENT_ERROR_CODES.badResponse, 'Unexpected undo_capture response');
+      }
+      return removed;
+    },
+
     completeTask: (id: string) => rpc<Task>('complete_task', { id }),
     undoTask: (id: string) => rpc<Task>('undo_task', { id }),
     deferTask: (id: string) => rpc<Task>('defer_task', { id }),
@@ -111,22 +217,23 @@ export function createSupabaseApi(config: SupabaseConfig): ApiClient {
 
     async updateTask(id: string, edit: TaskEdit): Promise<Task> {
       // Send only the PRD's editable columns, whatever the caller passed at runtime. The server
-      // must still enforce this (column grants or a trigger): this is not the security boundary.
+      // enforces this too (column grants and a trigger): this is not the security boundary.
       const body = Object.fromEntries(
         Object.entries(edit).filter(([k, v]) => EDITABLE.includes(k) && v !== undefined),
       );
-      const rows = await request<Task[]>(`/rest/v1/tasks?id=eq.${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        body,
-        headers: { Prefer: 'return=representation' },
-      });
-      const row = rows[0];
+      await requireSession();
+      const rows = unwrap<Task[] | null>(await client.from('tasks').update(body).eq('id', id).select(TASK_COLUMNS));
+      const row = rows?.[0];
       if (!row) throw new ApiError('task_not_found', 'Task not found', 404);
       return row;
     },
 
-    registerDevice: (apnsToken: string) => fn<void>('register-device', { apns_token: apnsToken }),
+    async registerDevice(apnsToken: string): Promise<void> {
+      await fn('register-device', { apns_token: apnsToken });
+    },
     exportData: () => fn<unknown>('export-data'),
-    deleteAccount: () => fn<void>('delete-account'),
+    async deleteAccount(): Promise<void> {
+      await fn('delete-account');
+    },
   };
 }

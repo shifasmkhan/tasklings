@@ -1,5 +1,5 @@
 // process-capture (US-03 extraction pipeline on top of the US-04 contract).
-// Request:  POST {capture_id, transcript, captured_at, timezone}
+// Request:  POST {capture_id, transcript, captured_at, timezone, source?}  (source: voice|text|siri|widget, default voice)
 // Response: 202 {capture_id}; tasks arrive by realtime on public.tasks.
 //
 // Flow: validate, save the capture as `parsing`, answer 202, then (in the background when the
@@ -41,11 +41,17 @@ export const MAX_REQUEST_BYTES = 128 * 1024;
 const MAX_CAPTURE_AGE_MS = 30 * 24 * 60 * 60 * 1000; // offline queue tolerance
 const MAX_CLOCK_AHEAD_MS = 5 * 60 * 1000;
 
+/** captures.source values. Typed notes send "text"; "siri" and "widget" are for the native targets. */
+export const CAPTURE_SOURCES = ["voice", "text", "siri", "widget"] as const;
+export type CaptureSource = typeof CAPTURE_SOURCES[number];
+export const DEFAULT_CAPTURE_SOURCE: CaptureSource = "voice";
+
 export interface CaptureRequest {
   capture_id: string;
   transcript: string;
   captured_at: Date;
   timezone: string;
+  source: CaptureSource;
 }
 
 /** The extraction output may hold zero tasks (e.g. a transcript with nothing actionable). */
@@ -62,7 +68,7 @@ export type QuotaVerdict = "ok" | "user_cap" | "global_cap";
 
 /** Data access, bound to the caller's JWT. */
 export interface CaptureStore {
-  insertCapture(id: string, transcript: string): Promise<InsertCaptureResult>;
+  insertCapture(id: string, transcript: string, source: CaptureSource): Promise<InsertCaptureResult>;
   insertTasks(captureId: string, tasks: readonly ExtractedTask[], needsReview: boolean): Promise<number>;
   setCaptureStatus(id: string, status: "done" | "failed", error?: string): Promise<void>;
   /** True when the capture already has tasks (a retry after a late failure must not duplicate them). */
@@ -82,11 +88,11 @@ export interface Deps {
   waitUntil?: (work: Promise<unknown>) => void;
 }
 
-const FIELDS = ["capture_id", "transcript", "captured_at", "timezone"] as const;
+const FIELDS = ["capture_id", "transcript", "captured_at", "timezone", "source"] as const;
 
 export function parseCaptureRequest(body: Record<string, unknown>, now: Date): CaptureRequest {
   rejectUnknownFields(body, FIELDS);
-  const { capture_id, transcript, captured_at, timezone } = body;
+  const { capture_id, transcript, captured_at, timezone, source } = body;
   if (!isUuid(capture_id)) throw new HttpError(400, "invalid_request", "capture_id must be a UUID");
   if (typeof transcript !== "string" || transcript.trim().length === 0) {
     throw new HttpError(400, "invalid_request", "transcript must be a non-empty string");
@@ -109,7 +115,17 @@ export function parseCaptureRequest(body: Record<string, unknown>, now: Date): C
   if (!isIanaTimeZone(timezone)) {
     throw new HttpError(400, "invalid_request", "timezone must be an IANA time zone");
   }
-  return { capture_id: capture_id.toLowerCase(), transcript: transcript.trim(), captured_at: at, timezone };
+  // Optional; strict when present (no case folding, no null): anything else is invalid_request.
+  if (source !== undefined && !CAPTURE_SOURCES.includes(source as CaptureSource)) {
+    throw new HttpError(400, "invalid_request", `source must be one of ${CAPTURE_SOURCES.join(", ")}`);
+  }
+  return {
+    capture_id: capture_id.toLowerCase(),
+    transcript: transcript.trim(),
+    captured_at: at,
+    timezone,
+    source: (source as CaptureSource | undefined) ?? DEFAULT_CAPTURE_SOURCE,
+  };
 }
 
 /** Why a capture was saved without running the model. */
@@ -208,7 +224,7 @@ export function createHandler(deps: Deps): (req: Request) => Promise<Response> {
     const input = parseCaptureRequest(await readJsonObject(req, MAX_REQUEST_BYTES), deps.now());
     const store = deps.store(user.token);
 
-    const created = await store.insertCapture(input.capture_id, input.transcript);
+    const created = await store.insertCapture(input.capture_id, input.transcript, input.source);
     if (created === "conflict") {
       throw new HttpError(409, "capture_conflict", "capture_id is already in use");
     }

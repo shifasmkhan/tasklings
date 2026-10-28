@@ -6,7 +6,7 @@ import type { ApiClient, ProcessCaptureRequest, Task } from '@/api/types';
 import { deviceTimeZone } from '@/lib/dates';
 import { logEvent } from '@/lib/log';
 
-/** Where the note came from. Client side only: process-capture has no source field (see PR notes). */
+/** Where the note came from. Sent to process-capture as `source` and stored in captures.source. */
 export type CaptureSource = 'voice' | 'text';
 
 export type PendingStatus =
@@ -96,6 +96,7 @@ export class CaptureStore {
       transcript,
       captured_at: this.now().toISOString(),
       timezone: this.timeZone(),
+      source: input.source,
     };
     this.entries.set(capture_id, {
       pending: { capture_id, source: input.source, status: 'sending', text: input.source === 'text' ? transcript : null },
