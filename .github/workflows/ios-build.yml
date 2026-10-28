@@ -1,0 +1,71 @@
+name: ios-build
+
+# Proves the app, including the local Swift module in app/modules/, compiles for the iOS Simulator.
+# No signing, no secrets. macOS minutes are free on public repos.
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/ios-build.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/ios-build.yml"
+
+# Least privilege: the job reads the code and nothing else.
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-build:
+    name: ios simulator build (unsigned)
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.23"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      # Lockfile only; the generated ios/ folder is never committed (it is in .gitignore).
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prebuild iOS project
+        run: npx expo prebuild --platform ios --no-install
+        env:
+          CI: "1"
+          EXPO_NO_TELEMETRY: "1"
+      - name: Install pods
+        run: pod install --project-directory=ios
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace ios/Tasklings.xcworkspace \
+            -scheme Tasklings \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/derived" \
+            ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -quiet 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log"
+      # Raw logs can't always be downloaded, so surface compiler errors as annotations.
+      - name: Annotate build errors
+        if: failure()
+        run: |
+          grep -E "error:" "$RUNNER_TEMP/xcodebuild.log" | sort -u | head -30 \
+            | sed -e 's/%/%25/g' -e 's/^/::error title=xcodebuild::/' || true
