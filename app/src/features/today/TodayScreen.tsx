@@ -3,15 +3,17 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Task } from '@/api/types';
+import { useOptionalCaptureStore, usePendingCaptures } from '@/features/capture/CaptureProvider';
 import { MoonIcon } from '@/components/icons';
 import { MIN_TOUCH, usePalette } from '@/theme/colors';
 import { firstNeedingReview } from './logic';
-import { AllDone, DoneToday, GroupHeader, MicBar, ReviewCard, StartHereCard, SummaryCard, UndoToast } from './parts';
+import { AllDone, DoneToday, GroupHeader, MicBar, PendingRow, ReviewCard, StartHereCard, SummaryCard, UndoToast } from './parts';
 import { TaskRow } from './TaskRow';
 import { useToday } from './useToday';
 
 export interface TodayNavigation {
-  openCapture: () => void;
+  /** `startLocked`: a tap on the mic starts locked recording at once; a long press just opens the sheet. */
+  openCapture: (options?: { startLocked?: boolean }) => void;
   openTask: (task: Task) => void;
   openCheckIn: () => void;
 }
@@ -29,6 +31,8 @@ export function TodayScreen({ nav, now = new Date() }: { nav: TodayNavigation; n
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const t = useToday();
+  const captures = useOptionalCaptureStore();
+  const pending = usePendingCaptures();
   const [doneOpen, setDoneOpen] = useState(false);
   const [measuredBar, setMeasuredBar] = useState<number | null>(null);
   const barHeight = measuredBar ?? MIC_BAR_ESTIMATE + Math.max(insets.bottom, 12);
@@ -63,6 +67,10 @@ export function TodayScreen({ nav, now = new Date() }: { nav: TodayNavigation; n
             <MoonIcon color={p.accent} cutout={p.card} />
           </Pressable>
         </View>
+
+        {pending.map((c) => (
+          <PendingRow key={c.capture_id} capture={c} onRetry={(id) => void captures?.retry(id)} />
+        ))}
 
         {t.loadState === 'loading' ? (
           <ActivityIndicator accessibilityLabel="Loading today's tasks" color={p.accent} style={styles.loading} />
@@ -132,7 +140,11 @@ export function TodayScreen({ nav, now = new Date() }: { nav: TodayNavigation; n
         />
       ) : null}
 
-      <MicBar onPress={nav.openCapture} bottomInset={insets.bottom} onHeight={setMeasuredBar} />
+      <MicBar
+        onTap={() => nav.openCapture({ startLocked: true })}
+        onHold={() => nav.openCapture()}
+        bottomInset={insets.bottom} onHeight={setMeasuredBar}
+      />
     </View>
   );
 }

@@ -266,6 +266,15 @@ describe('Today screen (US-04)', () => {
     expect(screen.queryByText('Hold to talk · tap to lock')).not.toBeOnTheScreen();
     await user.press(screen.getByRole('button', { name: 'Hold to talk, or tap to lock recording' }));
     expect(nav.openCapture).toHaveBeenCalledTimes(1);
+    expect(nav.openCapture).toHaveBeenCalledWith({ startLocked: true });
+  });
+
+  it('a long press on the mic opens the sheet idle, without starting recording', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await renderToday();
+    await user.longPress(screen.getByRole('button', { name: 'Hold to talk, or tap to lock recording' }));
+    expect(nav.openCapture).toHaveBeenCalledTimes(1);
+    expect(nav.openCapture).toHaveBeenCalledWith();
   });
 
   it('opens task detail and the evening check-in', async () => {

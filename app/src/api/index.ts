@@ -2,6 +2,8 @@ import { createMockApi } from './mock';
 import type { ApiClient } from './types';
 
 export * from './types';
+export type { CaptureArrival, CaptureArrivals } from './arrivals';
+export { hasArrivals } from './arrivals';
 export { ApiError, isApiError, toApiError } from './errors';
 export { createMockApi } from './mock';
 export { createSupabaseApi } from './supabase';

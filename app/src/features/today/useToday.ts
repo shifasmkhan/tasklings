@@ -5,8 +5,9 @@ import { useApi } from '@/api/ApiProvider';
 import { isApiError } from '@/api/errors';
 import type { Task } from '@/api/types';
 import { localIsoDate } from '@/lib/dates';
+import { useOptionalCaptureStore } from '@/features/capture/CaptureProvider';
 import { logEvent } from '@/lib/log';
-import { groupTasks, pickStartHere, summarize } from './logic';
+import { groupTasks, pickStartHere, plural, summarize } from './logic';
 
 export const UNDO_WINDOW_MS = 5000;
 /** Longer window while VoiceOver is on: a dropped task can only come back through Undo. */
@@ -176,6 +177,43 @@ export function useToday(today: string = localIsoDate()) {
     },
     [api, showToast, undo],
   );
+
+  // Tasks added by a capture (US-03) join Today as soon as their result arrives (realtime later;
+  // the mock backend until then), followed by the "Added N tasks" toast with Undo.
+  const captures = useOptionalCaptureStore();
+
+  const undoCapture = useCallback(
+    async (added: Task[]) => {
+      dismissToast();
+      const ids = new Set(added.map((t) => t.id));
+      setOpen((o) => o.filter((t) => !ids.has(t.id)));
+      // Dropping is the only way to take a task back: the contracts have no delete.
+      const results = await Promise.allSettled(added.map((t) => api.dropTask(t.id)));
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        logEvent('capture.undo_failed', { count: failed });
+        showToast("Couldn't undo. Try again.", null);
+        void load();
+      } else {
+        logEvent('capture.undo', { count: added.length });
+      }
+    },
+    [api, dismissToast, load, showToast],
+  );
+
+  useEffect(() => {
+    if (!captures) return;
+    return captures.onResult((result) => {
+      const added = result.tasks;
+      if (added.length === 0) {
+        // Nothing was created, so there is nothing to undo.
+        showToast('Nothing to add', null);
+        return;
+      }
+      setOpen((o) => [...o, ...added.filter((t) => t.status === 'open' && !o.some((x) => x.id === t.id))]);
+      showToast(`Added ${plural(added.length, 'task', 'tasks')}`, () => void undoCapture(added));
+    });
+  }, [captures, showToast, undoCapture]);
 
   const uncomplete = useCallback((task: Task) => void undo(task, 'uncomplete'), [undo]);
 
