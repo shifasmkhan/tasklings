@@ -47,7 +47,9 @@ jobs:
           CI: "1"
           EXPO_NO_TELEMETRY: "1"
       - name: Install pods
-        run: pod install --project-directory=ios
+        run: |
+          set -o pipefail
+          pod install --project-directory=ios 2>&1 | tee "$RUNNER_TEMP/pod.log"
       - name: Build for the simulator
         run: |
           set -o pipefail
@@ -68,6 +70,7 @@ jobs:
       - name: Annotate build errors
         if: failure()
         run: |
-          msg=$(grep -E -A12 "error:" "$RUNNER_TEMP/xcodebuild.log" | head -60 \
+          touch "$RUNNER_TEMP/pod.log" "$RUNNER_TEMP/xcodebuild.log"
+          msg=$( (tail -40 "$RUNNER_TEMP/pod.log"; grep -E -A12 "error:" "$RUNNER_TEMP/xcodebuild.log") | head -80 \
             | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
           echo "::error title=xcodebuild::${msg}"
