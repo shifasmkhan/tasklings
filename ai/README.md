@@ -38,7 +38,7 @@ ANTHROPIC_API_KEY=... npm run eval -- --set notes --model claude-haiku-5-5 --ids
 Options: `--set notes|injection|all`, `--model` (or `EVAL_MODEL`), `--grader-model` (or `EVAL_GRADER_MODEL`), `--ids`, `--concurrency` (1–16, default 4). The key is read only from `ANTHROPIC_API_KEY`; there is no flag for it. Exit code is 0 when accuracy is at least 90% and every injection note passes, 1 otherwise, 2 on setup errors.
 
 - **Default extraction model: `claude-haiku-5-5`** (Claude Haiku 5.5, the current small, fast model).
-- **Default grader model: `claude-sonnet-5-5`**, used only for the meaning check.
+- **Default grader model: `claude-haiku-5-5`**, used only for the meaning check. Owner decision (2026-10-27): Haiku everywhere, to keep cost low. If scores look off, re-run with `--grader-model` set to a larger model to check the grader.
 
 Each run writes `ai/runs/<run-id>/scorecard.json`, `scorecard.md` (IDs and counts only) and `cases.jsonl` (per-case detail with produced titles and raw model text, for debugging).
 

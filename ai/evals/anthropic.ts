@@ -7,7 +7,7 @@ import type { ModelClient, ModelRequest } from "../src/extraction/extract.ts";
 /** Current small/fast model; override with --model or EVAL_MODEL. */
 export const DEFAULT_MODEL = "claude-haiku-5-5";
 /** Grader model; override with --grader-model or EVAL_GRADER_MODEL. */
-export const DEFAULT_GRADER_MODEL = "claude-sonnet-5-5";
+export const DEFAULT_GRADER_MODEL = "claude-haiku-5-5";
 
 export function anthropicFromEnv(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY;
