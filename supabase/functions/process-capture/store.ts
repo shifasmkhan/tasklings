@@ -1,4 +1,10 @@
-import type { CaptureStore, ExtractedTask, InsertCaptureResult, QuotaVerdict } from "./handler.ts";
+import type {
+  CaptureSource,
+  CaptureStore,
+  ExtractedTask,
+  InsertCaptureResult,
+  QuotaVerdict,
+} from "./handler.ts";
 import { userClient } from "../_shared/supabase.ts";
 
 const UNIQUE_VIOLATION = "23505";
@@ -6,11 +12,10 @@ const UNIQUE_VIOLATION = "23505";
 export function supabaseCaptureStore(token: string): CaptureStore {
   const db = userClient(token);
   return {
-    async insertCapture(id, transcript): Promise<InsertCaptureResult> {
-      // source is not in the process-capture contract yet; voice is the only Phase 0 entry point.
+    async insertCapture(id, transcript, source: CaptureSource): Promise<InsertCaptureResult> {
       const { error } = await db.from("captures").insert({
         id,
-        source: "voice",
+        source,
         transcript,
         status: "parsing",
       });

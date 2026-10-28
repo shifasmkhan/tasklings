@@ -12,12 +12,14 @@
     "test:ci": "jest --ci"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.118.0",
     "expo": "58.0.16",
     "expo-constants": "58.0.12",
     "expo-crypto": "58.0.7",
     "expo-haptics": "58.0.7",
     "expo-linking": "58.0.13",
     "expo-router": "58.0.24",
+    "expo-secure-store": "58.0.2",
     "expo-status-bar": "58.0.3",
     "react": "19.3.0",
     "react-native": "0.88.0",
@@ -25,6 +27,7 @@
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "5.10.1",
     "react-native-screens": "4.30.0",
+    "react-native-url-polyfill": "4.0.0",
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {

@@ -51,6 +51,7 @@ describe('CaptureStore (US-01, US-02, US-03)', () => {
       transcript: 'Call the dentist',
       captured_at: '2026-10-27T14:30:00.000Z',
       timezone: 'America/Chicago',
+      source: 'voice',
     });
   });
 
