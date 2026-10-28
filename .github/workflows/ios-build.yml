@@ -49,7 +49,18 @@ jobs:
         env:
           CI: "1"
           EXPO_NO_TELEMETRY: "1"
+      # CocoaPods fetches this with a bare curl (no retry, no timeout) and a stalled download hung the
+      # job for 30 minutes. Fetch it ourselves with retries and hand the file to the pod scripts.
+      - name: Download prebuilt React Native core
+        run: |
+          v=$(node -p "require('react-native/package.json').version")
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 10 --max-time 600 \
+            -A "react-native-$v" -o "$RUNNER_TEMP/reactnative-core-debug.tar.gz" \
+            "https://repo.reactnative.dev/maven2/com/facebook/react/react-native-artifacts/$v/react-native-artifacts-$v-reactnative-core-debug.tar.gz"
+          echo "RCT_TESTONLY_RNCORE_TARBALL_PATH=$RUNNER_TEMP/reactnative-core-debug.tar.gz" >> "$GITHUB_ENV"
+        timeout-minutes: 15
       - name: Install pods
+        timeout-minutes: 20
         run: |
           set -o pipefail
           # Pods download prebuilt React Native binaries from repo.reactnative.dev; retry flaky downloads.
