@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/ApiProvider';
+import { CaptureProvider } from '@/features/capture/CaptureProvider';
 import { dark, light } from '@/theme/colors';
 
 export default function RootLayout() {
@@ -20,15 +21,17 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: p.background }}>
       <SafeAreaProvider>
         <ApiProvider>
-          <ThemeProvider value={theme}>
-            <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-            <Stack screenOptions={{ contentStyle: { backgroundColor: p.background } }}>
-              <Stack.Screen name="index" options={{ headerShown: false, title: 'Today' }} />
-              <Stack.Screen name="capture" options={{ presentation: 'formSheet', title: 'Capture', headerShown: false }} />
-              <Stack.Screen name="task/[id]" options={{ title: 'Task' }} />
-              <Stack.Screen name="check-in" options={{ presentation: 'modal', title: 'Evening check-in' }} />
-            </Stack>
-          </ThemeProvider>
+          <CaptureProvider>
+            <ThemeProvider value={theme}>
+              <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+              <Stack screenOptions={{ contentStyle: { backgroundColor: p.background } }}>
+                <Stack.Screen name="index" options={{ headerShown: false, title: 'Today' }} />
+                <Stack.Screen name="capture" options={{ presentation: 'formSheet', title: 'Capture', headerShown: false }} />
+                <Stack.Screen name="task/[id]" options={{ title: 'Task' }} />
+                <Stack.Screen name="check-in" options={{ presentation: 'modal', title: 'Evening check-in' }} />
+              </Stack>
+            </ThemeProvider>
+          </CaptureProvider>
         </ApiProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
