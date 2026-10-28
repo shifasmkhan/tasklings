@@ -25,10 +25,9 @@ concurrency:
 jobs:
   simulator-build:
     name: ios simulator build (unsigned)
-    runs-on: macos-15
+    # Expo SDK 58 (expo-modules-jsi) needs Swift tools 6.2, which means Xcode 26.
+    runs-on: macos-26
     timeout-minutes: 60
-    # Not a required check: a flaky download or Xcode change must not block merges.
-    continue-on-error: true
     defaults:
       run:
         working-directory: app
