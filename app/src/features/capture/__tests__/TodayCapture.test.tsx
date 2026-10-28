@@ -92,7 +92,7 @@ describe('After saving (US-03)', () => {
     expect(screen.getByText('Added 1 task')).toBeOnTheScreen();
   });
 
-  it('Undo drops the added tasks and leaves the others', async () => {
+  it('Undo removes the added tasks (undo_capture) and leaves the others', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const { api, store } = await renderToday();
     await save(store, 'voice', 'Call the dentist, buy stamps');
@@ -104,8 +104,9 @@ describe('After saving (US-03)', () => {
     expect(screen.getByText('Text the neighbour')).toBeOnTheScreen();
     const byStatus = api.snapshot().map((t) => [t.title, t.status]);
     expect(byStatus).toContainEqual(['Text the neighbour', 'open']);
-    expect(byStatus).toContainEqual(['Call the dentist', 'dropped']);
-    expect(byStatus).toContainEqual(['Buy stamps', 'dropped']);
+    // Deleted, not dropped: undo_capture removes the capture's tasks.
+    expect(byStatus.map(([title]) => title)).not.toContain('Call the dentist');
+    expect(byStatus.map(([title]) => title)).not.toContain('Buy stamps');
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeOnTheScreen();
   });
 

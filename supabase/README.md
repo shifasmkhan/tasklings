@@ -9,8 +9,8 @@ Rules from the security review: edge functions query Postgres with the caller's 
 | Path | What |
 |---|---|
 | `config.toml` | Local/CI Supabase config. Only `public` is exposed through the API. |
-| `migrations/` | Schema (`0100`), contract additions approved 2026-10-27 (`0200`: `last_rollover_on`, `undo_planned_for`, `needs_review`), task RPCs (`0300`), rollover job (`0400`), realtime (`0500`), process-capture support (`0600`: `needs_review` insert grant, extraction limits and counters, stuck-capture sweeper). |
-| `tests/database/` | pgTAP: RLS and privileges, every RPC as the owner and as another user, rollover with time-zone changes, `needs_review`. |
+| `migrations/` | Schema (`0100`), contract additions approved 2026-10-27 (`0200`: `last_rollover_on`, `undo_planned_for`, `needs_review`), task RPCs (`0300`), rollover job (`0400`), realtime (`0500`), process-capture support (`0600`: `needs_review` insert grant, extraction limits and counters, stuck-capture sweeper), `undo_capture` and the guarded task delete (`0700`). |
+| `tests/database/` | pgTAP: RLS and privileges, every RPC as the owner and as another user, rollover with time-zone changes, `needs_review`, `undo_capture`. |
 | `functions/` | Deno edge functions: `process-capture`, `register-device`, `export-data`, `delete-account`, shared code in `_shared/`, tests in `tests/`. `process-capture` imports the extraction module from `ai/src/extraction` (see below). |
 | `seed.sql` | Synthetic local data (two `example.test` users). |
 | `package.json` | Pins the Supabase CLI and Deno; `package-lock.json` holds the integrity hashes. |
@@ -32,6 +32,7 @@ CI runs both on every PR with no secrets (`.github/workflows/ci.yml`).
 - RLS is on for every table. `authenticated` has per-user policies keyed on `auth.uid()`; `anon` has no privileges anywhere.
 - Supabase's default "grant all" is revoked and access is granted back per column.
 - **Task edits**: clients may update only `title, kind, effort_min, due_date, notes`. `status, planned_for, completed_at, dropped_reason` change only inside the task RPCs: the RPCs run as the caller (SECURITY INVOKER), so they need the column grant, and a trigger rejects those columns unless the RPC set a transaction-local flag. A client can't set the flag: PostgREST runs one statement per request and doesn't expose `set_config`. `effort_min_initial, carry_count, user_id, capture_id, first_planned_for` have no client update grant at all. On insert the database sets `planned_for` (the user's today), `first_planned_for` and `effort_min_initial` (= `effort_min`).
+- **Task deletes** (`0700`): `authenticated` holds `DELETE` on `tasks` (plus an own-rows RLS policy) only so that `undo_capture` can run as the caller. A `BEFORE DELETE` row trigger rejects every delete unless the RPC set the same transaction-local flag as the task RPCs (`tasklings.task_rpc`), so a direct `DELETE /rest/v1/tasks` fails with `protected_column` (403), also in a transaction that earlier called an RPC (the flag is switched off again). Foreign-key cascades (deleting a user, `task_steps`) run as the table owner and are unaffected. Tests: `06_undo_capture.test.sql`.
 - **`apple_refresh_token`** is stored in `public.apple_credentials`, a table only the service role can read (no grants for clients, and RLS with no policies). We chose a separate table over column privileges on `profiles` so no future grant, view, `select *` or realtime publication on `profiles` can expose it. It holds ciphertext; the key lives outside the database. Only `delete-account` reads it.
 - **`needs_review`** (`tasks.needs_review boolean not null default false`) marks the single task process-capture saves when extraction fell back to the fixed review task. The owner approved this grant: the app's normal role may set it **on insert only** (`grant insert (needs_review)`); there is no update grant. The insert trigger that used to force it to false is gone, so a flagged insert is kept. A trigger clears it to false whenever title, kind, effort_min, due_date or notes change (any role), so the first edit confirms the task. Changing nothing, or using the task RPCs (defer, complete, drop, undo), leaves it alone. A client can flag its own task; that has no effect beyond the flag. Tests: `04_needs_review.test.sql`.
 - **Extraction limits and counters** (`private.extraction_limits`, one row; `private.extraction_usage(user_id, day, calls)`, one row per user per UTC day). Clients and `service_role` have no grants on either, and RLS is on with no policies. Internal, not a client contract. See "Cost and abuse controls".
@@ -40,6 +41,18 @@ CI runs both on every PR with no secrets (`.github/workflows/ci.yml`).
 - Exactly two SECURITY DEFINER functions exist, and a test fails if any other appears:
   - `private.handle_new_user`, the `auth.users` insert trigger that creates the profile. It pins `search_path` and touches only the new row.
   - `public.reserve_extraction()` (below). It takes no arguments, requires `auth.uid()`, pins `search_path`, writes only the caller's counter row and returns only a verdict. Execute is granted to `authenticated` only.
+
+## undo_capture (US-09)
+
+`POST /rest/v1/rpc/undo_capture {capture_id}` deletes the tasks the caller's capture created and returns how many it removed. SECURITY INVOKER, `search_path` pinned. It succeeds only if **all** of these hold, otherwise it raises `undo_expired` (HTTP 409):
+
+- the capture is the caller's and `done`, and became `done` at most 30 seconds ago (`captures.status_changed_at`);
+- every one of its tasks is still `open`;
+- none of them has been touched since insert (`updated_at = created_at`; any later update, even to the same value, or a complete/defer/drop followed by an undo, moves `updated_at`).
+
+Another user's capture, an unknown id and a capture that is not `done` all raise the same `undo_expired`, so there is no existence oracle. The capture row is left as it is. The task rows are locked before the checks, so a concurrent `complete_task` can't slip in. A repeat call after a successful undo finds no tasks and returns 0. A null `capture_id` is `invalid_argument`. The delete runs under the task-RPC flag; see "Task deletes" above. Known limit: realtime does not apply row-level security to DELETE events, so a signed-in user subscribed to `tasks` could see the primary key (a random UUID, no other column) of a task deleted by someone else's undo. Nothing else leaks; the app does not subscribe to `tasks`.
+
+`captures` is also in the `supabase_realtime` publication now (`0700`), so the app can see its own capture reach `done`; realtime applies the subscriber's RLS select policy, so a user receives only their own rows.
 
 ## "Today" and rollover (US-08)
 
@@ -57,6 +70,7 @@ All are `POST /rest/v1/rpc/<name>` with the user JWT.
 | `complete_task` | `{id}` | Updated task. Only from `open`. |
 | `undo_task` | `{id}` | Updated task. done → open, dropped → open, or, after a defer, restores the previous `planned_for`. |
 | `defer_task` | `{id}` | Task with `planned_for` = tomorrow in the profile time zone. Only from `open`. |
+| `undo_capture` | `{capture_id}` | Integer: how many tasks were removed. See "undo_capture" below. |
 | `drop_task` | `{id, reason?}` | Updated task. `reason` is `not_needed`, `done_elsewhere`, `obsolete` or null. Only from `open`. |
 
 ## Error codes
@@ -79,6 +93,7 @@ RPCs and table writes go through PostgREST, which returns `{"code", "message", "
 | `profile_not_found` | 404 | task insert | The caller has no profile. |
 | `invalid_state` | 409 | task RPCs | The transition isn't allowed (for example, completing a done task). |
 | `nothing_to_undo` | 409 | undo_task | An open task with no defer to undo. |
+| `undo_expired` | 409 | undo_capture | The capture can't be undone (any reason below), including another user's or an unknown capture. |
 | `capture_conflict` | 409 | process-capture | The capture_id belongs to another capture. A retry of your own capture returns 202. |
 | `internal_error` | 500 | edge fns | Unexpected failure. No details are returned or logged. |
 
@@ -88,7 +103,7 @@ Freshness is measured from the `amr` claim (`[{method, timestamp}]`): the latest
 
 ## process-capture (US-03)
 
-`POST {capture_id, transcript, captured_at, timezone}` returns `202 {capture_id}`; tasks arrive by realtime. The contract is unchanged. A transcript must be 1 to 20,000 characters (the 2-minute note cap); anything longer is `400 invalid_request` before any database or model work.
+`POST {capture_id, transcript, captured_at, timezone, source?}` returns `202 {capture_id}`; tasks arrive by realtime. `source` is optional and must be exactly `voice`, `text`, `siri` or `widget` (default `voice`); it is stored in `captures.source`. Any other value (wrong case, `null`, a number, an unknown word) is `400 invalid_request` before any database or model work. A retry of an existing capture keeps the source it was created with. A transcript must be 1 to 20,000 characters (the 2-minute note cap); anything longer is `400 invalid_request` before any database or model work.
 
 Flow, all with the caller's JWT:
 

@@ -54,12 +54,17 @@ export interface Session {
   expires_at: number;
 }
 
+/** captures.source. Voice notes are `voice`, typed notes `text`; `siri` and `widget` come with the native targets. */
+export type CaptureSource = 'voice' | 'text' | 'siri' | 'widget';
+
 export interface ProcessCaptureRequest {
   capture_id: string;
   transcript: string;
   captured_at: IsoTimestamp;
   /** IANA time zone, e.g. America/Chicago. */
   timezone: string;
+  /** Optional; the server stores it in captures.source and defaults to `voice`. Typed notes send `text`. */
+  source?: CaptureSource;
 }
 
 export interface ProcessCaptureResponse {
@@ -81,6 +86,12 @@ export interface ApiClient {
   processCapture(request: ProcessCaptureRequest): Promise<ProcessCaptureResponse>;
   /** today_tasks() RPC. */
   todayTasks(): Promise<TodayTasks>;
+  /**
+   * undo_capture(capture_id) RPC: deletes the tasks the capture created and resolves to how many
+   * were removed. Rejects with `undo_expired` (409) when the window has passed (30 seconds after
+   * the capture finished) or any of the tasks was touched since: then the tasks simply stay.
+   */
+  undoCapture(captureId: string): Promise<number>;
   /** complete_task(id) RPC. */
   completeTask(id: string): Promise<Task>;
   /** undo_task(id) RPC. */

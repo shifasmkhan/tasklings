@@ -15,6 +15,23 @@ module.exports = defineConfig([
     },
   },
   {
+    rules: {
+      // The Supabase session lives in the Keychain (expo-secure-store, security review S-12),
+      // never in AsyncStorage, which is plain files.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@react-native-async-storage/async-storage',
+              message: 'Sessions and tokens go in expo-secure-store (Keychain), never AsyncStorage.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/lib/log.ts', 'jest.setup.js'],
     rules: { 'no-console': 'off' },
   },
