@@ -9,7 +9,7 @@ Rules from the security review: edge functions query Postgres with the caller's 
 | Path | What |
 |---|---|
 | `config.toml` | Local/CI Supabase config. Only `public` is exposed through the API. |
-| `migrations/` | Schema (`0100`), contract additions approved 2026-10-27 (`0200`: `last_rollover_on`, `undo_planned_for`, `needs_review`), task RPCs (`0300`), rollover job (`0400`), realtime (`0500`), process-capture support (`0600`: `needs_review` insert grant, extraction limits and counters, stuck-capture sweeper), `undo_capture` and the guarded task delete (`0700`). |
+| `migrations/` | Schema (`0100`), contract additions approved 2026-10-27 (`0200`: `last_rollover_on`, `undo_planned_for`, `needs_review`), task RPCs (`0300`), rollover job (`0400`), realtime (`0500`), process-capture support (`0600`: `needs_review` insert grant, extraction limits and counters, stuck-capture sweeper), `undo_capture` and the guarded task delete (`0700`), realtime narrowed to `captures` only (`0800`). |
 | `tests/database/` | pgTAP: RLS and privileges, every RPC as the owner and as another user, rollover with time-zone changes, `needs_review`, `undo_capture`. |
 | `functions/` | Deno edge functions: `process-capture`, `register-device`, `export-data`, `delete-account`, shared code in `_shared/`, tests in `tests/`. `process-capture` imports the extraction module from `ai/src/extraction` (see below). |
 | `seed.sql` | Synthetic local data (two `example.test` users). |
@@ -50,9 +50,9 @@ CI runs both on every PR with no secrets (`.github/workflows/ci.yml`).
 - every one of its tasks is still `open`;
 - none of them has been touched since insert (`updated_at = created_at`; any later update, even to the same value, or a complete/defer/drop followed by an undo, moves `updated_at`).
 
-Another user's capture, an unknown id and a capture that is not `done` all raise the same `undo_expired`, so there is no existence oracle. The capture row is left as it is. The task rows are locked before the checks, so a concurrent `complete_task` can't slip in. A repeat call after a successful undo finds no tasks and returns 0. A null `capture_id` is `invalid_argument`. The delete runs under the task-RPC flag; see "Task deletes" above. Known limit: realtime does not apply row-level security to DELETE events, so a signed-in user subscribed to `tasks` could see the primary key (a random UUID, no other column) of a task deleted by someone else's undo. Nothing else leaks; the app does not subscribe to `tasks`.
+Another user's capture, an unknown id and a capture that is not `done` all raise the same `undo_expired`, so there is no existence oracle. The capture row is left as it is. The task rows are locked before the checks, so a concurrent `complete_task` can't slip in. A repeat call after a successful undo finds no tasks and returns 0. A null `capture_id` is `invalid_argument`. The delete runs under the task-RPC flag; see "Task deletes" above. Realtime does not apply row-level security to DELETE events, so `tasks` is **not** in the `supabase_realtime` publication (removed in `0800`; a signed-in subscriber could otherwise see the UUID of a task deleted by someone else's undo). Only `captures` is published; the app reads a capture's tasks after its status becomes `done`. Test: `07_realtime_publication.test.sql`.
 
-`captures` is also in the `supabase_realtime` publication now (`0700`), so the app can see its own capture reach `done`; realtime applies the subscriber's RLS select policy, so a user receives only their own rows.
+`captures` is in the `supabase_realtime` publication (`0700`), and `tasks` is not (`0800`), so the app can see its own capture reach `done`; realtime applies the subscriber's RLS select policy, so a user receives only their own rows.
 
 ## "Today" and rollover (US-08)
 
