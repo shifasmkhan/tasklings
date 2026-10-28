@@ -55,13 +55,16 @@ function fakeStore(opts: {
   const tokens: string[] = [];
   const tasks: ExtractedTask[] = [];
   const flags: boolean[] = [];
+  const sources: string[] = [];
   const statuses: { status: string; error?: string }[] = [];
   let reserved = 0;
   const hasTasks = opts.hasTasks ?? false;
   const factory = (token: string): CaptureStore => {
     tokens.push(token);
     return {
-      insertCapture: (id) => (calls.push(`capture:${id}`), Promise.resolve(opts.result ?? "created")),
+      insertCapture: (id, _transcript, source) => (
+        calls.push(`capture:${id}`), sources.push(source), Promise.resolve(opts.result ?? "created")
+      ),
       insertTasks: (_id, t, needsReview) => {
         calls.push("tasks");
         if (opts.insertFails) {
@@ -90,6 +93,7 @@ function fakeStore(opts: {
     tokens,
     tasks,
     flags,
+    sources,
     statuses,
     get reserved() {
       return reserved;
@@ -389,6 +393,22 @@ Deno.test("process-capture: a 20,000-character note that JSON-escapes to 6 bytes
   assert.equal(res.status, 202);
 });
 
+Deno.test("process-capture: source defaults to voice and is stored in captures.source", async () => {
+  const { h, store } = handler();
+  const res = await h(post("process-capture", VALID, tokenFor()));
+  assert.equal(res.status, 202);
+  assert.deepEqual(store.sources, ["voice"]);
+});
+
+for (const source of ["voice", "text", "siri", "widget"]) {
+  Deno.test(`process-capture: accepts source ${source} and passes it to the capture insert`, async () => {
+    const { h, store } = handler();
+    const res = await h(post("process-capture", { ...VALID, source }, tokenFor()));
+    assert.equal(res.status, 202);
+    assert.deepEqual(store.sources, [source]);
+  });
+}
+
 const invalid: [string, unknown][] = [
   ["missing capture_id", { ...VALID, capture_id: undefined }],
   ["non-uuid capture_id", { ...VALID, capture_id: "capture-1" }],
@@ -402,6 +422,13 @@ const invalid: [string, unknown][] = [
   ["unknown time zone", { ...VALID, timezone: "Mars/Olympus_Mons" }],
   ["offset instead of IANA zone", { ...VALID, timezone: "+05:30" }],
   ["old field name time_zone", { ...VALID, timezone: undefined, time_zone: "America/Chicago" }],
+  ["source in the wrong case", { ...VALID, source: "Voice" }],
+  ["source with a trailing space", { ...VALID, source: "text " }],
+  ["unknown source", { ...VALID, source: "email" }],
+  ["empty source", { ...VALID, source: "" }],
+  ["null source", { ...VALID, source: null }],
+  ["numeric source", { ...VALID, source: 1 }],
+  ["array source", { ...VALID, source: ["text"] }],
   ["extra field", { ...VALID, user_id: "00000000-0000-4000-a000-00000000000b" }],
   ["array body", [VALID]],
   ["null body", null],
