@@ -26,7 +26,16 @@ export interface SpeechListener {
   onPartial: (transcript: string) => void;
   /** Input level from 0 to 1, a few times a second, for the waveform. */
   onLevel?: (level: number) => void;
-  /** Listening stopped on its own with an error. The recognizer is idle afterwards. */
+  /**
+   * Listening ended on its own without a failure: a phone call or other interruption, the app going
+   * to the background, or the time cap. Nothing is lost: the sheet saves the note as if the user had
+   * released the mic, and `stop()` returns the text heard so far (possibly empty).
+   */
+  onEnded?: () => void;
+  /**
+   * Listening failed for real (it could not start, or the recognizer is unusable). The recognizer is
+   * idle afterwards. Interruptions and the time cap are `onEnded`, not errors.
+   */
   onError: (error: SpeechRecognizerError) => void;
 }
 

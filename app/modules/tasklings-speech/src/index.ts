@@ -6,6 +6,8 @@ import { requireOptionalNativeModule } from 'expo';
 export interface NativeSpeechEvents {
   onPartial: { text: string };
   onLevel: { level: number };
+  /** Listening ended on its own (interruption or time cap). The text so far comes from stop(). */
+  onEnded: Record<string, never>;
   onError: { code: string };
 }
 

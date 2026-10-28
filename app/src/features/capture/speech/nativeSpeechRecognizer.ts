@@ -35,6 +35,10 @@ export function createNativeSpeechRecognizer(native: NativeSpeechModule): Speech
         native.addListener('onLevel', ({ level }) => {
           if (current()) listener.onLevel?.(Math.min(1, Math.max(0, level)));
         }),
+        native.addListener('onEnded', () => {
+          // Keep the session: stop() still has to collect the final text from native.
+          if (current()) listener.onEnded?.();
+        }),
         native.addListener('onError', ({ code }) => {
           if (!current()) return;
           // The native side is idle after an error.

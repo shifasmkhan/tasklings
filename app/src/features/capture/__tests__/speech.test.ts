@@ -45,6 +45,16 @@ describe('mock SpeechRecognizer (US-01)', () => {
     await expect(r.stop()).resolves.toBe('');
   });
 
+  it('endAfterTicks ends the run like an interruption: onEnded fires and stop still returns the text', async () => {
+    const r = createMockSpeechRecognizer({ transcript: 'one two three four five six', tickMs: 100, endAfterTicks: 2 });
+    const l = { ...listener(), onEnded: jest.fn() };
+    await r.start(l);
+    jest.advanceTimersByTime(1000);
+    expect(l.onEnded).toHaveBeenCalledTimes(1);
+    expect(l.onError).not.toHaveBeenCalled();
+    await expect(r.stop()).resolves.toBe('one two three four');
+  });
+
   it('rejects start with permission_denied when access is refused', async () => {
     const r = createMockSpeechRecognizer({ denyPermission: true });
     const err = await r.start(listener()).catch((e: unknown) => e);

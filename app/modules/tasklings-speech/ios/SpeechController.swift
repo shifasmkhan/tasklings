@@ -132,11 +132,7 @@ final class SpeechController: @unchecked Sendable {
   }
 
   private func startListening(generation myGeneration: Int) throws {
-    // Device language. No fallback to another locale and no server recognition.
-    guard let recognizer = SFSpeechRecognizer(locale: Locale.current),
-      recognizer.isAvailable,
-      recognizer.supportsOnDeviceRecognition
-    else {
+    guard let recognizer = Self.makeRecognizer() else {
       throw SpeechException(.unavailable)
     }
 
@@ -212,11 +208,24 @@ final class SpeechController: @unchecked Sendable {
     lock.unlock()
   }
 
+  /// English only for the MVP: the device language if it is English and has on-device support,
+  /// else en-US if that does, else nothing. Never a server-side fallback.
+  private static func makeRecognizer() -> SFSpeechRecognizer? {
+    let candidates = [Locale.current, Locale(identifier: "en-US")]
+    for locale in candidates {
+      guard locale.language.languageCode?.identifier == "en" else { continue }
+      if let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable, recognizer.supportsOnDeviceRecognition {
+        return recognizer
+      }
+    }
+    return nil
+  }
+
   // MARK: - Recognition results
 
   private func handle(generation myGeneration: Int, text: String?, isFinal: Bool, failed: Bool) {
     var partialToEmit: String?
-    var errorToEmit = false
+    var endedToEmit = false
     var pending: [CheckedContinuation<String, Never>] = []
     var resumeText = ""
 
@@ -231,10 +240,10 @@ final class SpeechController: @unchecked Sendable {
     switch state {
     case .listening:
       if failed && !isFinal {
-        // The recognizer died while the user was still talking: stop everything and tell the app.
-        teardownLocked()
-        resetLocked()
-        errorToEmit = true
+        // The recognizer stopped while the user was still talking. Keep what was heard: the run
+        // ends as a save, never as a loss.
+        (pending, resumeText) = completeLocked()
+        endedToEmit = true
       } else if let text = text, !isFinal {
         partialToEmit = text
       }
@@ -248,7 +257,7 @@ final class SpeechController: @unchecked Sendable {
     lock.unlock()
 
     if let partial = partialToEmit { emit("onPartial", ["text": partial]) }
-    if errorToEmit { emit("onError", ["code": SpeechErrorCode.failed.rawValue]) }
+    if endedToEmit { emit("onEnded", [:]) }
     pending.forEach { $0.resume(returning: resumeText) }
   }
 
@@ -306,27 +315,18 @@ final class SpeechController: @unchecked Sendable {
     return (pending, text)
   }
 
-  /// Stops listening because something outside our control ended it (call, route change, backgrounding).
-  private func fail(generation myGeneration: Int) {
+  /// Something outside our control ended the run (call, Siri, route change, backgrounding) or the
+  /// time cap was reached. This is a save, not an error: audio stops, the text heard so far is kept
+  /// for `stop()`, and the app is told so it can save the note like a release.
+  private func endRun(generation myGeneration: Int) {
     var shouldEmit = false
     lock.lock()
     if generation == myGeneration, state == .listening {
-      generation += 1
-      teardownLocked()
-      resetLocked()
+      beginFinishingLocked()
       shouldEmit = true
     }
     lock.unlock()
-    if shouldEmit { emit("onError", ["code": SpeechErrorCode.failed.rawValue]) }
-  }
-
-  private func capReached(generation myGeneration: Int) {
-    lock.lock()
-    if generation == myGeneration, state == .listening {
-      // Stop recording and keep what was heard; the app's stop() picks up the final text.
-      beginFinishingLocked()
-    }
-    lock.unlock()
+    if shouldEmit { emit("onEnded", [:]) }
   }
 
   // MARK: - Lifecycle helpers (caller holds the lock)
@@ -334,7 +334,7 @@ final class SpeechController: @unchecked Sendable {
   private func scheduleCapLocked(generation myGeneration: Int) {
     let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
     timer.schedule(deadline: .now() + Self.maxRecordingSeconds)
-    timer.setEventHandler { [weak self] in self?.capReached(generation: myGeneration) }
+    timer.setEventHandler { [weak self] in self?.endRun(generation: myGeneration) }
     capTimer = timer
     timer.resume()
   }
@@ -354,7 +354,7 @@ final class SpeechController: @unchecked Sendable {
           let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
           guard raw == AVAudioSession.InterruptionType.began.rawValue else { return }
         }
-        self?.fail(generation: myGeneration)
+        self?.endRun(generation: myGeneration)
       }
     }
   }

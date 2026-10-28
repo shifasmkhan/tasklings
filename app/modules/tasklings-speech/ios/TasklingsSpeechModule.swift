@@ -28,7 +28,7 @@ public final class TasklingsSpeechModule: Module {
     let controller = self.controller
     Name("TasklingsSpeech")
 
-    Events("onPartial", "onLevel", "onError")
+    Events("onPartial", "onLevel", "onEnded", "onError")
 
     OnCreate {
       controller.emit = { [weak self] name, body in

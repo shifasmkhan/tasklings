@@ -50,7 +50,7 @@ describe('native SpeechRecognizer wrapper (US-01)', () => {
     const l = listener();
     await recognizer.start(l);
     await expect(recognizer.stop()).resolves.toBe('final words');
-    expect(removed.sort()).toEqual(['onError', 'onLevel', 'onPartial']);
+    expect(removed.sort()).toEqual(['onEnded', 'onError', 'onLevel', 'onPartial']);
     emit('onPartial', { text: 'late' });
     expect(l.onPartial).not.toHaveBeenCalled();
   });
@@ -100,6 +100,17 @@ describe('native SpeechRecognizer wrapper (US-01)', () => {
       .catch((e: unknown) => e)) as SpeechRecognizerError;
     expect(error.code).toBe('failed');
     expect(error.message).not.toContain('secret');
+  });
+
+  it('forwards onEnded without ending the session, so stop still returns the text', async () => {
+    const { native, emit } = fakeNative();
+    const recognizer = createNativeSpeechRecognizer(native);
+    const l = { ...listener(), onEnded: jest.fn() };
+    await recognizer.start(l);
+    emit('onEnded', {});
+    expect(l.onEnded).toHaveBeenCalledTimes(1);
+    expect(l.onError).not.toHaveBeenCalled();
+    await expect(recognizer.stop()).resolves.toBe('final words');
   });
 
   it('forwards an error event once, then goes quiet', async () => {
