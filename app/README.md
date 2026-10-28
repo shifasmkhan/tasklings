@@ -29,6 +29,8 @@ npm run test:ci
 | `src/api/` | `ApiClient` interface for every Phase 0 contract, the mock, and a thin Supabase stub |
 | `src/features/capture/` | Capture sheet (US-01 voice, US-02 typing), the `SpeechRecognizer` interface and its mock, and the capture store (offline queue, results for Today, US-03) |
 | `src/features/today/` | Today screen (US-04), the Start here rule and grouping logic, undo (US-09) |
+| `src/features/task/` | Task detail (US-05): inline editing with autosave, script card, "Found for you", Done / Tomorrow / Drop with undo |
+| `src/features/checkin/` | Evening check-in (US-07, US-12): card stack, still-need-this cards, drop reasons, summary |
 | `src/theme/` | Light and dark palettes; contrast is tested |
 | `src/lib/log.ts` | The only logger: IDs and codes only, never titles, notes or transcripts |
 | `src/lib/nonce.ts` | Sign in with Apple nonce: secure random raw value plus its SHA-256 hex (client side; sign-in itself is US-10) |
@@ -41,6 +43,13 @@ npm run test:ci
 - **No result.** If no result arrives within 60 s of the 202, the Sorting row becomes "Couldn't sort your note · Try again"; Try again resends the same `capture_id`. A late result still completes the capture.
 - **Offline.** A capture that fails with `network_error` stays in the store's queue and is sent again when the app returns to the foreground. The queue is in memory only: persistent storage comes with the local SQLite store.
 - **Mock results by keyword** (`src/api/syntheticCapture.ts`): "nothing to add", "never mind" or "thinking out loud" gives zero tasks; "garbled", "fallback" or "mumbling" gives one `needs_review` task; anything else gives one task per clause (up to 10). The mock recognizer's `empty` and `fallback` scripts use these words.
+
+## Task detail and Evening check-in (US-05, US-07, US-12)
+
+- **Task detail** loads its task from `today_tasks()` (there is no get-task contract). Title edits save after 800 ms of quiet or on blur; chip menus save at once. A failed save puts the old value back and shows an inline error. Edits never send `effort_min_initial`.
+- **Not in the API yet:** the capture transcript ("From your voice note" is omitted), enrichments ("Found for you" reads placeholder data from `mockEnrichments` in `src/api/fixtures.ts`) and `profiles.brief_time` (the check-in summary shows 8:00 with a note).
+- **Today reloads** when it regains focus (`refreshKey` on `TodayScreen`), so a cleared "Needs a look" card disappears at once.
+- **Check-in** builds up to 7 cards (still-need-this, then due today, then most carried); the rest roll over on their own. Swipe right is Done, left is Tomorrow; the buttons do the same and are the accessible path. The "Remind me in 1 hour" notification action is native/push work and is not part of this screen.
 
 ## Rules for this folder
 
