@@ -21,6 +21,8 @@ export interface MockSpeechOptions {
   transcript?: string;
   /** Start rejects with permission_denied. */
   denyPermission?: boolean;
+  /** Ends the run on its own after this many ticks, like an interruption: onEnded fires and stop() still returns the text so far. */
+  endAfterTicks?: number;
   /** Milliseconds between partial results. Default 400. */
   tickMs?: number;
 }
@@ -56,6 +58,12 @@ export function createMockSpeechRecognizer(options: MockSpeechOptions = {}): Spe
         listener.onPartial(words.slice(0, revealed).join(' '));
         // Deterministic, lively-looking levels. Not random: tests stay stable.
         listener.onLevel?.(0.25 + 0.7 * Math.abs(Math.sin(tick * 1.3)));
+        if (options.endAfterTicks !== undefined && tick >= options.endAfterTicks) {
+          // Stop the clock but stay "listening", so stop() returns what was heard.
+          if (timer) clearInterval(timer);
+          timer = null;
+          listener.onEnded?.();
+        }
       }, tickMs);
     },
 

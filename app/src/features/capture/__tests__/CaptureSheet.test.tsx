@@ -235,6 +235,26 @@ describe('Capture sheet: voice (US-01)', () => {
     expect(screen.getByText(COPY.noSpeech)).toBeOnTheScreen();
   });
 
+  it('an interruption mid-note saves the text heard so far, like a release', async () => {
+    const h = setup({ endAfterTicks: 3 }); // 6 words by the third tick
+    await renderSheet(h, true);
+    await advance(1200);
+    expect(h.submit).toHaveBeenCalledWith({ source: 'voice', transcript: SIX_WORDS });
+    expect(h.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(COPY.unavailable)).not.toBeOnTheScreen();
+  });
+
+  it('an interruption with nothing heard saves nothing and shows no message', async () => {
+    const h = setup({ transcript: '', endAfterTicks: 2 });
+    await renderSheet(h, true);
+    await advance(1000);
+    expect(h.submit).not.toHaveBeenCalled();
+    expect(h.onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText(COPY.noSpeech)).not.toBeOnTheScreen();
+    expect(screen.queryByText(COPY.unavailable)).not.toBeOnTheScreen();
+    expect(screen.getByTestId('hold-to-talk')).toBeOnTheScreen();
+  });
+
   describe('permission denied', () => {
     it('shows a short message with a Type instead path', async () => {
       const h = setup({ denyPermission: true });

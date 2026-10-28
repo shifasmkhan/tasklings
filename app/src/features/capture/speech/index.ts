@@ -1,18 +1,19 @@
+import { loadNativeSpeechModule } from '../../../../modules/tasklings-speech/src';
 import { createMockSpeechRecognizer } from './mockSpeechRecognizer';
+import { createNativeSpeechRecognizer } from './nativeSpeechRecognizer';
 import type { SpeechRecognizer } from './SpeechRecognizer';
 
 export * from './SpeechRecognizer';
 export { createMockSpeechRecognizer } from './mockSpeechRecognizer';
+export { createNativeSpeechRecognizer, toSpeechErrorCode } from './nativeSpeechRecognizer';
 export type { MockSpeechOptions, MockSpeechScript } from './mockSpeechRecognizer';
 
 /**
- * The app's recognizer.
- *
- * TODO(native-ios): this is the one place to swap in the real on-device recognizer. The Native iOS
- * workstream builds a native module (SFSpeechRecognizer with on-device recognition required) that
- * implements `SpeechRecognizer`, plus the microphone and speech-recognition usage strings in
- * app.json. Return it here. Don't add a speech library: that module is the only speech dependency.
+ * The app's recognizer: the on-device native module (US-01) when it is built into the app, else the
+ * scripted mock (Jest, Expo Go, web). Audio stays on the phone: the module requires on-device
+ * recognition and has no server fallback.
  */
 export function createSpeechRecognizer(): SpeechRecognizer {
-  return createMockSpeechRecognizer();
+  const native = loadNativeSpeechModule();
+  return native ? createNativeSpeechRecognizer(native) : createMockSpeechRecognizer();
 }

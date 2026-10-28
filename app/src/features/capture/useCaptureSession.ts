@@ -55,6 +55,7 @@ export function useCaptureSession(args: {
   // Bumped whenever a recording ends, so late callbacks from an old recording are ignored.
   const sessionRef = useRef(0);
   const startRef = useRef<Promise<void> | null>(null);
+  const saveNoteRef = useRef<((quietIfEmpty: boolean) => Promise<void>) | null>(null);
   const startedAtRef = useRef(0);
   const pressedAtRef = useRef(0);
   const closedRef = useRef(false);
@@ -94,6 +95,11 @@ export function useCaptureSession(args: {
             if (session !== sessionRef.current) return;
             setLevels((prev) => [...prev.slice(-(WAVEFORM_BARS - 1)), Math.min(1, Math.max(0, level))]);
           },
+          onEnded: () => {
+            // An interruption, backgrounding or the time cap: save like a release, never lose the note.
+            if (session !== sessionRef.current) return;
+            void saveNoteRef.current?.(true);
+          },
           onError: (error) => {
             if (session !== sessionRef.current) return;
             sessionRef.current += 1;
@@ -124,7 +130,8 @@ export function useCaptureSession(args: {
     [clearRecording, recognizer, setPhase],
   );
 
-  const save = useCallback(async () => {
+  /** Stops listening and saves the note. `quietIfEmpty`: an interruption with nothing heard just ends, with no message. */
+  const saveNote = useCallback(async (quietIfEmpty: boolean) => {
     if (phaseRef.current !== 'holding' && phaseRef.current !== 'locked') return;
     setPhase('saving');
     // Let a start that is still asking for permission settle before stopping.
@@ -143,7 +150,7 @@ export function useCaptureSession(args: {
     const text = (finalText.trim() || transcriptRef.current.trim()).trim();
     if (!text) {
       clearRecording();
-      setNotice('no_speech');
+      setNotice(quietIfEmpty ? null : 'no_speech');
       setPhase('idle');
       return;
     }
@@ -151,6 +158,13 @@ export function useCaptureSession(args: {
     closedRef.current = true;
     onClose();
   }, [clearRecording, onClose, phaseNow, recognizer, setPhase, store]);
+
+  const save = useCallback(() => saveNote(false), [saveNote]);
+
+  // The recognizer calls back from startRecording, which is defined before saveNote.
+  useEffect(() => {
+    saveNoteRef.current = saveNote;
+  }, [saveNote]);
 
   const cancelRecording = useCallback(() => {
     if (phaseRef.current !== 'holding' && phaseRef.current !== 'locked' && phaseRef.current !== 'saving') return;
