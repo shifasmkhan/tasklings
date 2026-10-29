@@ -11,7 +11,8 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Tasklings listens while you hold the mic so you can say your tasks out loud. Your audio is processed on your iPhone and never leaves it. Only the text of your note is sent to make your tasks.",
-        "NSSpeechRecognitionUsageDescription": "Tasklings turns your voice into text using your iPhone's on-device speech recognition. Your audio stays on your iPhone. Only the text of your note is sent to make your tasks."
+        "NSSpeechRecognitionUsageDescription": "Tasklings turns your voice into text using your iPhone's on-device speech recognition. Your audio stays on your iPhone. Only the text of your note is sent to make your tasks.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "updates": {
@@ -19,6 +20,11 @@
     },
     "plugins": [
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5a1c2fbe-d466-49e6-9729-02596be10f3e"
+      }
+    }
   }
 }
