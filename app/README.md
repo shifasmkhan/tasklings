@@ -11,6 +11,18 @@ npm ci
 npx expo start        # then press i for the iOS Simulator (macOS)
 ```
 
+### Simulator build without local CocoaPods (EAS)
+
+`eas.json` has one profile, `simulator`: an unsigned iOS Simulator build made on Expo's servers, so no Apple account, CocoaPods or Ruby is needed locally. It forces the mock backend (both Supabase variables empty).
+
+```sh
+cd app
+npx eas-cli@latest login
+npx eas-cli@latest build -p ios --profile simulator
+```
+
+When it finishes, the CLI offers to install the build on a booted Simulator; or download the `.tar.gz`, unpack it and drag the `.app` onto the Simulator. To reload JavaScript changes without rebuilding, run `npx expo start --dev-client` only after `expo-dev-client` is added (not yet).
+
 By default the app runs on an in-memory mock backend with synthetic tasks, so no Supabase project or sign-in is needed. To use a real project, see "Live backend" below.
 
 ## Checks (the same ones CI runs)
