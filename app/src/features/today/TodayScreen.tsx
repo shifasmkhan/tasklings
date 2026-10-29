@@ -17,6 +17,8 @@ export interface TodayNavigation {
   openTask: (task: Task) => void;
   openCheckIn: () => void;
   openSettings: () => void;
+  /** Dev only: long-press on the title (re-runs onboarding in the Simulator). */
+  onTitleLongPress?: () => void;
 }
 
 /** First-frame guess at the mic bar's height; the real height comes from onLayout. */
@@ -69,9 +71,15 @@ export function TodayScreen({
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={[styles.date, { color: p.secondaryText }]}>{formatHeaderDate(now)}</Text>
-            <Text role="heading" style={[styles.h1, { color: p.text }]}>
-              Today
-            </Text>
+            <Pressable
+              disabled={!nav.onTitleLongPress}
+              onLongPress={nav.onTitleLongPress}
+              accessible={false}
+            >
+              <Text role="heading" style={[styles.h1, { color: p.text }]}>
+                Today
+              </Text>
+            </Pressable>
           </View>
           <View style={styles.headerButtons}>
             <Pressable

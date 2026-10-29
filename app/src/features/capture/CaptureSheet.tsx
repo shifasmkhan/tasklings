@@ -32,6 +32,7 @@ export const COPY = {
   holdingHint: 'Release to save · slide up to lock · slide left to cancel',
   lockedHint: 'Locked · tap to stop and save',
   footnote: `Tasks get sorted after you save. Notes can run up to ${MAX_RECORDING_MS / 60_000} minutes.`,
+  firstNoteHint: 'Try: “Call the dentist and buy milk on the way home”',
   typeFootnote: 'Press Return to save. Write as many things as you like; they get sorted after you save.',
 } as const;
 
@@ -42,13 +43,15 @@ interface Props {
   createRecognizer?: () => SpeechRecognizer;
   /** Opened by a tap on Today's mic: start locked recording as soon as the sheet appears. */
   startLocked?: boolean;
+  /** A line of guidance under the header, e.g. the example note during onboarding (US-19). */
+  hint?: string;
 }
 
 /**
  * The Capture sheet (US-01 voice, US-02 typing). Saving closes it at once; Today takes over from
  * there (US-03).
  */
-export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognizer, startLocked = false }: Props) {
+export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognizer, startLocked = false, hint }: Props) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const store = useCaptureStore();
@@ -99,6 +102,12 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
           )}
         </View>
       </View>
+
+      {hint ? (
+        <Text testID="capture-hint" style={[styles.hint, { color: p.text, backgroundColor: p.fill }]}>
+          {hint}
+        </Text>
+      ) : null}
 
       {typing ? (
         <View style={styles.body}>
@@ -215,6 +224,7 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   status: { fontSize: 15, fontWeight: '500' },
   transcript: { fontSize: 24, fontWeight: '600', lineHeight: 31 },
+  hint: { fontSize: 15, lineHeight: 21, padding: 12, borderRadius: 12, overflow: 'hidden', marginTop: 4 },
   footnote: { fontSize: 13 },
   message: { fontSize: 17, lineHeight: 24 },
   input: { fontSize: 24, fontWeight: '600', minHeight: 120, textAlignVertical: 'top', paddingVertical: 0 },
