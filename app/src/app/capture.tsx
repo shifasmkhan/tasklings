@@ -12,6 +12,9 @@ import { CaptureSheet, COPY } from '@/features/capture/CaptureSheet';
  */
 export default function CaptureRoute() {
   const router = useRouter();
+  // A cold `tasklings://capture` has no screen under the sheet: land on Today (which sends a
+  // first-run user to onboarding) instead of going back to nothing.
+  const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
   const [launch] = useState(peekCaptureLaunch);
   // Read once, then drop the flag so it can't apply to a later open.
   useEffect(() => {
@@ -19,5 +22,5 @@ export default function CaptureRoute() {
     // However the sheet goes away (button, swipe down), Today may show tasks again.
     return releaseIntentCover;
   }, []);
-  return <CaptureSheet onClose={() => router.back()} startLocked={launch.autoStart} hint={launch.firstNoteHint ? COPY.firstNoteHint : undefined} />;
+  return <CaptureSheet onClose={close} startLocked={launch.autoStart} hint={launch.firstNoteHint ? COPY.firstNoteHint : undefined} />;
 }

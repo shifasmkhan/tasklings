@@ -27,6 +27,14 @@ struct AddTaskIntent: AppIntent {
   // Foreground only: no background recording. On a locked iPhone iOS asks for unlock first.
   static let openAppWhenRun: Bool = true
 
+  // iOS 26+: also declare foreground mode, so the system runs perform() in the app process even
+  // when the intent is started from the widget or control extension (the flag below lives in the
+  // app's private UserDefaults, which the extension process cannot reach). Before iOS 26, only
+  // openAppWhenRun applies. If a run did land in the extension, auto-start would simply not fire
+  // and the sheet would open idle: safe, never an unintended recording.
+  @available(iOS 26.0, *)
+  static var supportedModes: IntentModes { .foreground }
+
   func perform() async throws -> some IntentResult {
     PendingLaunch.mark()
     return .result()

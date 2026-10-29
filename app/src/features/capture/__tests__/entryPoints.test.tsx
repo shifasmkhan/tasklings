@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 
 import { ApiProvider } from '@/api/ApiProvider';
@@ -16,6 +16,8 @@ import { resetIntentLaunchForTests } from '../intentLaunch';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+let mockCanGoBack = true;
 const mockDismissAll = jest.fn();
 let mockParams: Record<string, string> = {};
 let mockNavKey: string | undefined = 'root';
@@ -23,7 +25,7 @@ jest.mock('expo-router', () => {
   const { Text: T } = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     Redirect: ({ href }: { href: string }) => <T>{`redirect:${href}`}</T>,
-    useRouter: () => ({ push: mockPush, back: mockBack, dismissAll: mockDismissAll, canDismiss: () => true, replace: jest.fn() }),
+    useRouter: () => ({ push: mockPush, back: mockBack, dismissAll: mockDismissAll, canDismiss: () => true, canGoBack: () => mockCanGoBack, replace: mockReplace }),
     useLocalSearchParams: () => mockParams,
     useRootNavigationState: () => ({ key: mockNavKey }),
     useFocusEffect: () => undefined,
@@ -83,6 +85,7 @@ describe('Entry points (US-01)', () => {
     jest.clearAllMocks();
     mockParams = {};
     mockNavKey = 'root';
+    mockCanGoBack = true;
     clearCaptureLaunch();
     resetIntentLaunchForTests();
   });
@@ -94,6 +97,32 @@ describe('Entry points (US-01)', () => {
       expect(await screen.findByTestId('hold-to-talk')).toBeTruthy();
       expect(screen.queryByText(/Recording, locked/)).toBeNull();
       expect(screen.queryByText(/Try: /)).toBeNull();
+    });
+  });
+
+  describe('closing a cold deep link', () => {
+    it('lands on Today when there is nothing to go back to', async () => {
+      mockCanGoBack = false;
+      await render(<Harness native={null}><CaptureRoute /></Harness>);
+      await act(async () => {
+        fireEvent.press(await screen.findByLabelText('Cancel'));
+      });
+      expect(mockReplace).toHaveBeenCalledWith('/');
+      expect(mockBack).not.toHaveBeenCalled();
+    });
+
+    it('goes back normally when a screen is underneath', async () => {
+      await render(<Harness native={null}><CaptureRoute /></Harness>);
+      await act(async () => {
+        fireEvent.press(await screen.findByLabelText('Cancel'));
+      });
+      expect(mockBack).toHaveBeenCalled();
+      expect(mockReplace).not.toHaveBeenCalled();
+    });
+
+    it('Today then applies the onboarding gate (first run goes to onboarding)', async () => {
+      await render(<Harness native={null} onboarded={false}><TodayRoute /></Harness>);
+      expect(await screen.findByText('redirect:/onboarding')).toBeTruthy();
     });
   });
 

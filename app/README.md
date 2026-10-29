@@ -70,11 +70,11 @@ All of them open the existing Capture sheet; none forks it.
 
 | Entry point | What it is | Where |
 | --- | --- | --- |
-| **Siri / Shortcuts / Spotlight** | App Intent "Add a task" with App Shortcut phrases "Add a task in Tasklings" and "New Tasklings note" | `targets/widget/_shared/AddTaskIntent.swift`, `TasklingsShortcuts.swift` |
+| **Siri / Shortcuts / Spotlight** | App Intent "Add a task" with App Shortcut phrases "Add a task in Tasklings" and "New Tasklings note" | `targets/widget/_shared/AddTaskIntent.swift` (app + extension), `plugins/app-shortcuts/TasklingsShortcuts.swift` (app target only, added by `plugins/withAppShortcuts.js`) |
 | **Action Button** | Settings > Action Button > Shortcut > Tasklings > Add a task, or > Controls > Tasklings > Add a task | same intent / the control below |
 | **Control Center and lock screen control** (iOS 18+) | `ControlWidgetButton` running the intent | `targets/widget/CaptureControl.swift` |
 | **Home Screen widget** (small) | App name and a mic button (`Button(intent:)`). Static, no data: counts and the next task are US-06 and need an App Group summary store, which is not added | `targets/widget/MicWidget.swift` |
-| **Deep link** `tasklings://capture` | Opens the sheet **idle**, like a long press | `src/app/capture.tsx` |
+| **Deep link** `tasklings://capture` | Opens the sheet **idle**, like a long press. Opened cold, there is no screen under it, so closing it goes to Today (and Today sends a first-run user to onboarding) | `src/app/capture.tsx` |
 
 The widget extension targets iOS 17; the Control is wrapped in `if #available(iOS 18.0, *)` in the widget bundle. The app itself targets iOS 16.4.
 
@@ -85,6 +85,12 @@ Starting the microphone must never be triggerable by another app or a web page.
 - **Only our own App Intent starts recording on open.** The intent (`openAppWhenRun`, foreground only; there is no background-recording intent) writes a timestamp to the app's private `UserDefaults` (not an App Group) and posts an in-process notification. The `tasklings-intents` module's `consumePendingLaunch()` returns true **once** per run and only if the timestamp is under 15 s old. `IntentLaunchHandler` checks it at startup (before the first render), on the `onIntentLaunch` event and when the app becomes active, then opens `/capture` and arms auto-start.
 - **No URL parameter can start recording.** `src/app/capture.tsx` reads no route params at all; `?start=lock`, `?hint=...` and anything else are ignored. In-app starts (Today's tap, onboarding) use the same one-shot in-process flag (`captureLaunch.ts`, expires after 5 s, cleared by the sheet after reading) instead of the old `start=lock` URL parameter.
 - No new permissions: the existing microphone and speech strings cover it. The first ever run still shows the permission prompts from the sheet, and an intent launch before onboarding is complete is dropped (onboarding first).
+
+### Which process runs the intent
+
+`AddTaskIntent` is in both the app and the extension, with `openAppWhenRun`; on iOS 26+ it also declares `supportedModes = .foreground` so the system runs `perform()` in the app, where the private flag can be read. Before iOS 26, widget and control runs rely on `openAppWhenRun` alone. If a run ever lands in the extension process, the flag never reaches the app: the app opens and the sheet does not auto-record (safe, but not what we want). There is no App Group to bridge it, by design.
+
+**Verified only by the CI build (compiles, not exercised): need a device check** on iOS 18 to 25 and on iOS 26: Home Screen widget button, Control Center control, lock screen control, Action Button, Siri/Shortcuts phrases, and that each opens the sheet already recording.
 
 ### Nothing existing is shown
 

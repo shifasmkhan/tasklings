@@ -20,7 +20,8 @@
     },
     "plugins": [
       "expo-router",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "./plugins/withAppShortcuts"
     ],
     "extra": {
       "eas": {
