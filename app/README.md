@@ -37,11 +37,12 @@ npm run test:ci
 
 | Path | What lives there |
 | --- | --- |
-| `src/app/` | Expo Router routes: Today (`index`), `capture`, `task/[id]`, `check-in` |
+| `src/app/` | Expo Router routes: Today (`index`), `capture`, `task/[id]`, `check-in`, `settings` |
 | `src/api/` | `ApiClient` interface for every Phase 0 contract, the mock, and the live Supabase client (`supabase.ts`, realtime in `supabaseArrivals.ts`, Keychain session storage in `secureSessionStorage.ts`, backend choice in `live.ts` and `index.ts`) |
 | `src/features/capture/` | Capture sheet (US-01 voice, US-02 typing), the `SpeechRecognizer` interface and its mock, and the capture store (offline queue, results for Today, US-03) |
 | `src/features/today/` | Today screen (US-04), the Start here rule and grouping logic, undo (US-09) |
 | `src/features/task/` | Task detail (US-05): inline editing with autosave, script card, "Found for you", Done / Tomorrow / Drop with undo |
+| `src/features/settings/` | Settings (US-11) and Recently dropped (US-09): times, restore, export and delete, with the Apple re-sign-in seam and the share-sheet export |
 | `src/features/checkin/` | Evening check-in (US-07, US-12): card stack, still-need-this cards, drop reasons, summary |
 | `src/theme/` | Light and dark palettes; contrast is tested |
 | `src/lib/log.ts` | The only logger: IDs and codes only, never titles, notes or transcripts |
@@ -62,10 +63,26 @@ npm run test:ci
 
 ## Task detail and Evening check-in (US-05, US-07, US-12)
 
-- **Task detail** loads its task from `today_tasks()` (there is no get-task contract). Title edits save after 800 ms of quiet or on blur; chip menus save at once. A failed save puts the old value back and shows an inline error. Edits never send `effort_min_initial`.
-- **Not in the API yet:** the capture transcript ("From your voice note" is omitted), enrichments ("Found for you" reads placeholder data from `mockEnrichments` in `src/api/fixtures.ts`) and `profiles.brief_time` (the check-in summary shows 8:00 with a note).
+- **Task detail** loads its task from `getTask(id)`, so it also opens tasks that aren't on Today. It shows "From your voice note" (the capture's transcript, when there is one), the script card for any task with a `script`, and "Found for you" with phone, address and hours only: `url` and `note` enrichments and every `source_url` are never rendered (PRD decision: no web links yet). Title edits save after 800 ms of quiet or on blur; chip menus save at once. A failed save puts the old value back and shows an inline error. Edits never send `effort_min_initial`.
+- **Brief time.** The check-in summary reads `getProfile().briefTime`; if the profile can't be read the "Your brief will be ready at ..." line is left out.
 - **Today reloads** when it regains focus (`refreshKey` on `TodayScreen`), so a cleared "Needs a look" card disappears at once.
 - **Check-in** builds up to 7 cards (still-need-this, then due today, then most carried); the rest roll over on their own. Swipe right is Done, left is Tomorrow; the buttons do the same and are the accessible path. The "Remind me in 1 hour" notification action is native/push work and is not part of this screen.
+
+## Settings and Recently dropped (US-11, US-09)
+
+Route `settings`, opened from the gear in Today's header (`aria-label` "Settings"). Contracts used (PRD, proposed 2026-10-28, using only existing RLS and column grants):
+
+| `ApiClient` method | Live implementation |
+| --- | --- |
+| `getProfile()` | `profiles` select of `display_name, timezone, brief_time, checkin_time` (RLS: own row). Postgres `HH:MM:SS` is normalised to `HH:MM`. |
+| `updateProfileTimes({ briefTime?, checkinTime? })` | `profiles` update of `brief_time` / `checkin_time` only, `eq('user_id', session user)`. Values are checked as `HH:MM` 00:00 to 23:59 before any request; invalid is `invalid_request`. |
+| `getTask(id)` | `tasks` row by id, plus the capture's `transcript` and the task's `task_enrichments`. Unknown id (or another user's) is `not_found`. |
+| `recentlyDropped()` | `tasks` with `status = 'dropped'` and `updated_at` in the last 30 days, newest first, limit 100. Restore is `undoTask`. |
+
+- **Times.** A native compact time picker (`@react-native-community/datetimepicker`) per time. A change shows at once and saves; saves go one at a time. On failure the old time comes back and an inline message appears. Footnote: "Reminders start once notifications are turned on." (pushes are US-06).
+- **Recently dropped.** Restore calls `undo_task`, removes the row and shows a short confirmation. Empty state: "Nothing dropped in the last 30 days."
+- **Export and delete** both start with a fresh Sign in with Apple through `AppleCredentialSource` (`appleCredential.ts`), then call `signInWithApple` and the edge function, because the server needs a session under 5 minutes old. Until US-10 the default source returns a placeholder token: the mock accepts it, the live client is refused and the screen says "Sign in with Apple isn't set up yet." A `reauth_required` answer from the server asks the person to sign in again. Export writes the JSON to the app cache, opens the iOS share sheet on that file (React Native `Share`, `expo-file-system` for the file) and deletes the file afterwards; its contents are never logged. Delete asks in a bottom sheet first; on success the live client clears its Keychain session (local sign-out) and the screen returns to Today. TODO(US-19): go to first-run onboarding instead, once that route exists. The mock's `deleteAccount` empties its tasks and resets the profile.
+- **Native modules.** `@react-native-community/datetimepicker` and `expo-file-system` are native: rebuild the dev/simulator build after pulling this.
 
 ## Live backend
 
