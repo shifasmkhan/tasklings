@@ -19,7 +19,8 @@
       "enabled": false
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "@bacons/apple-targets"
     ],
     "extra": {
       "eas": {

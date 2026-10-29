@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 
+import { armCaptureLaunch } from '@/features/capture/captureLaunch';
 import { OnboardingFlow } from '@/features/onboarding/OnboardingFlow';
 
 export default function OnboardingRoute() {
@@ -22,7 +23,10 @@ export default function OnboardingRoute() {
     <OnboardingFlow
       returnKey={returnKey}
       nav={{
-        openCapture: () => router.push({ pathname: '/capture', params: { start: 'lock', hint: 'first' } }),
+        openCapture: () => {
+          armCaptureLaunch({ autoStart: true, firstNoteHint: true });
+          router.push('/capture');
+        },
         goToday: () => router.replace('/'),
       }}
     />
