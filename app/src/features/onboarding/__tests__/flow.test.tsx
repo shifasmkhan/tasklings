@@ -57,6 +57,15 @@ describe('Onboarding flow (US-19)', () => {
     expect(saveTimes).toHaveBeenCalledWith({ briefTime: '08:30', checkinTime: '20:15' });
   });
 
+  it('saves through ApiClient.updateProfileTimes by default', async () => {
+    const api = createMockApi({ tasks: [] });
+    const update = jest.spyOn(api, 'updateProfileTimes');
+    await toTimes({ api });
+    await press('Continue');
+    await screen.findByText(COPY.notificationsTitle);
+    expect(update).toHaveBeenCalledWith({ briefTime: '08:00', checkinTime: '20:30' });
+  });
+
   it('has no Skip on the sign-in step', async () => {
     await renderFlow();
     await press('Get started');
