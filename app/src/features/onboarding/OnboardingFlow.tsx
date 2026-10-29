@@ -6,9 +6,8 @@ import { useApi } from '@/api/ApiProvider';
 import { isApiError } from '@/api/errors';
 import { useOptionalCaptureStore } from '@/features/capture/CaptureProvider';
 import { logEvent } from '@/lib/log';
-import { createAppleNonce } from '@/lib/nonce';
 import { usePalette } from '@/theme/colors';
-import { createMockAppleCredentialSource, type AppleCredentialSource } from './appleCredential';
+import { defaultAppleCredentialSource, type AppleCredentialSource } from '@/features/auth/appleCredential';
 import { createNotificationPermission, type NotificationPermission } from './notifications';
 import { useOnboardingGate } from './OnboardingProvider';
 import { AppleSignInButton, ErrorText, PrimaryButton, StepFrame, TextButton, TimeStepper } from './parts';
@@ -52,13 +51,12 @@ interface Props {
   saveTimes?: SaveTimes;
 }
 
-const defaultCredentials = createMockAppleCredentialSource();
 const defaultNotifications = createNotificationPermission();
 
 export function OnboardingFlow({
   nav,
   returnKey = 0,
-  credentials = defaultCredentials,
+  credentials = defaultAppleCredentialSource,
   notifications = defaultNotifications,
   saveTimes,
 }: Props) {
@@ -112,9 +110,9 @@ export function OnboardingFlow({
     setBusy(true);
     setError(null);
     try {
-      const nonce = await createAppleNonce();
-      const token = await credentials.getIdentityToken(nonce.hashed);
-      await api.signInWithApple(token, nonce.raw);
+      // The same credential seam Settings uses; US-10 replaces it in one place.
+      const credential = await credentials();
+      await api.signInWithApple(credential.identityToken, credential.rawNonce);
       go('times');
     } catch (err) {
       const code = isApiError(err) ? err.code : 'unknown_error';

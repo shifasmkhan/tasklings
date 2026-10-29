@@ -43,7 +43,7 @@ npm run test:ci
 | `src/features/today/` | Today screen (US-04), the Start here rule and grouping logic, undo (US-09) |
 | `src/features/task/` | Task detail (US-05): inline editing with autosave, script card, "Found for you", Done / Tomorrow / Drop with undo |
 | `src/features/settings/` | Settings (US-11) and Recently dropped (US-09): times, restore, export and delete, with the Apple re-sign-in seam and the share-sheet export |
-| `src/features/onboarding/` | First-run onboarding (US-19): flow, first-run flag, notification and Apple credential interfaces |
+| `src/features/onboarding/` | First-run onboarding (US-19): flow, first-run flag, notification permission interface; sign-in uses the shared `features/auth/appleCredential.ts` |
 | `src/features/checkin/` | Evening check-in (US-07, US-12): card stack, still-need-this cards, drop reasons, summary |
 | `src/theme/` | Light and dark palettes; contrast is tested |
 | `src/lib/log.ts` | The only logger: IDs and codes only, never titles, notes or transcripts |
@@ -89,8 +89,9 @@ Route `settings`, opened from the gear in Today's header (`aria-label` "Settings
 Welcome, Sign in, Times, Notifications, First note, then Today: five screens, no typing, no animation (a single screen swaps its content, so Reduce Motion needs no special case). Every step can be skipped except sign-in.
 
 - **First-run gate.** `onboarding_complete` lives in expo-secure-store (`onboardingStore.ts`; AsyncStorage is banned). `app/index.tsx` redirects to `/onboarding` while the flag is absent, so Today is not mounted until onboarding ends. The flag is written only at the end of the last step (first note saved, or Skip for now). An unreadable flag counts as absent.
+- **After Delete account.** Settings closes, then clears the flag, so the gate sends the person back to onboarding.
 - **Re-run it in the Simulator.** In a dev build, long-press the "Today" title: it clears the flag and returns to onboarding.
-- **Sign in.** The button uses Apple's styling (black on light, white on dark, logo glyph) and calls `ApiClient.signInWithApple` with a nonce from `lib/nonce.ts`. The identity token comes from `AppleCredentialSource` (`appleCredential.ts`); only a mock exists because `expo-apple-authentication` is not added yet (US-10). The mock backend accepts it; a live backend answers `unauthenticated`, shown as "Sign in with Apple isn't set up yet."
+- **Sign in.** The button uses Apple's styling (black on light, white on dark, logo glyph) and calls `ApiClient.signInWithApple` with a nonce from `lib/nonce.ts`. The credential comes from `AppleCredentialSource` in `src/features/auth/appleCredential.ts`, the same seam Settings uses, so US-10 replaces one place; it is a placeholder because `expo-apple-authentication` is not added yet. The mock backend accepts it; a live backend answers `unauthenticated`, shown as "Sign in with Apple isn't set up yet."
 - **Times.** Brief 8:00 AM and check-in 8:30 PM are pre-filled; Earlier / Later buttons move 15 minutes. Continue saves with `ApiClient.updateProfileTimes` (US-11); a failure shows an inline error and Continue retries.
 - **Notifications.** `NotificationPermission` (`notifications.ts`) has a mock only. Do not add `expo-notifications` before the paid Apple membership: it adds the push entitlement, which breaks free-tier device installs. Allow, Not now, a denial or an error all continue.
 - **Microphone and speech.** The native speech module has no separate permission call; `start()` asks. The First note screen says so, and the Record button opens the existing Capture sheet (`/capture?start=lock&hint=first`) with the example line "Try: Call the dentist and buy milk on the way home". Typing stays available in the sheet. When the sheet closes after a save, onboarding ends and Today shows the usual "Added N tasks" (or "Nothing to add") toast. Closing the sheet without saving stays on the step.

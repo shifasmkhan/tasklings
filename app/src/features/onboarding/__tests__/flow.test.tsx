@@ -66,6 +66,17 @@ describe('Onboarding flow (US-19)', () => {
     expect(update).toHaveBeenCalledWith({ briefTime: '08:00', checkinTime: '20:30' });
   });
 
+  it('signs in with the shared credential source', async () => {
+    const api = createMockApi({ tasks: [] });
+    const signIn = jest.spyOn(api, 'signInWithApple');
+    const credentials = jest.fn().mockResolvedValue({ identityToken: 'tok', rawNonce: 'raw' });
+    await renderFlow({ api, credentials });
+    await press('Get started');
+    await press('Sign in with Apple');
+    await screen.findByText(COPY.timesTitle);
+    expect(signIn).toHaveBeenCalledWith('tok', 'raw');
+  });
+
   it('has no Skip on the sign-in step', async () => {
     await renderFlow();
     await press('Get started');

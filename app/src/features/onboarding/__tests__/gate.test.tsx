@@ -7,15 +7,23 @@ import { createSecureOnboardingStore, ONBOARDING_FLAG_KEY } from '../onboardingS
 import { OnboardingProvider, useOnboardingGate } from '../OnboardingProvider';
 import { memoryStore, type MemoryStore } from '../testing';
 
+const mockRouter: { dismissAll?: () => void } = {};
+const mockSettingsProps: { onDeleted?: (fn: () => void) => void } = {};
 const mockTodayProps: { onTitleLongPress?: () => void }[] = [];
 jest.mock('expo-router', () => {
   const { Text: T } = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     Redirect: ({ href }: { href: string }) => <T>{`redirect:${href}`}</T>,
-    useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+    useRouter: () => ({ push: jest.fn(), replace: jest.fn(), dismissAll: () => mockRouter.dismissAll?.() }),
     useFocusEffect: () => undefined,
   };
 });
+jest.mock('@/features/settings/SettingsScreen', () => ({
+  SettingsScreen: ({ onAccountDeleted }: { onAccountDeleted: () => void }) => {
+    mockSettingsProps.onDeleted?.(onAccountDeleted);
+    return null;
+  },
+}));
 jest.mock('@/features/today/TodayScreen', () => {
   const { Text: T } = jest.requireActual<typeof import('react-native')>('react-native');
   return {
@@ -117,5 +125,31 @@ describe('Secure onboarding store', () => {
     expect(await store.isComplete()).toBe(true);
     await store.clear();
     expect(await store.isComplete()).toBe(false);
+  });
+});
+
+describe('After Delete account (US-11, US-19)', () => {
+  it('clears the flag and sends the person to onboarding', async () => {
+    const store = memoryStore(true);
+    const dismissAll = jest.fn();
+    mockRouter.dismissAll = dismissAll;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const SettingsRoute = require('@/app/settings').default;
+    let captured: (() => void) | undefined;
+    mockSettingsProps.onDeleted = (fn) => (captured = fn);
+    await render(
+      <ApiProvider client={createMockApi({ tasks: [] })}>
+        <OnboardingProvider store={store}>
+          <SettingsRoute />
+          <TodayRoute />
+        </OnboardingProvider>
+      </ApiProvider>,
+    );
+    await screen.findByText('today-screen');
+    await act(async () => captured?.());
+    expect(dismissAll).toHaveBeenCalledTimes(1);
+    expect(store.clear).toHaveBeenCalledTimes(1);
+    expect(store.value).toBe(false);
+    expect(await screen.findByText('redirect:/onboarding')).toBeTruthy();
   });
 });

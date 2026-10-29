@@ -5,7 +5,7 @@ import type { Profile, Task } from '@/api/types';
 import { logEvent } from '@/lib/log';
 import { useScreenReaderRef } from '@/lib/useScreenReader';
 import { undoWindowMs, type Toast } from '@/features/today/useToday';
-import type { AppleCredentialSource } from './appleCredential';
+import type { AppleCredentialSource } from '@/features/auth/appleCredential';
 import type { ExportSharer } from './exportShare';
 import {
   codeOf,

@@ -6,7 +6,7 @@ import type { Task } from '@/api/types';
 import { UndoToast } from '@/features/today/parts';
 import { MIN_TOUCH, usePalette, type Palette } from '@/theme/colors';
 import appConfig from '../../../app.json';
-import { defaultAppleCredentialSource, type AppleCredentialSource } from './appleCredential';
+import { defaultAppleCredentialSource, type AppleCredentialSource } from '@/features/auth/appleCredential';
 import { shareExportFile, type ExportSharer } from './exportShare';
 import { clockToDate, dateToClock, DELETE_COPY, EMPTY_DROPPED_TEXT, TIMES_FOOTNOTE, type TimeKind } from './logic';
 import { useSettings } from './useSettings';
