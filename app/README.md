@@ -13,7 +13,7 @@ npx expo start        # then press i for the iOS Simulator (macOS)
 
 ### Simulator build without local CocoaPods (EAS)
 
-`eas.json` has one profile, `simulator`: an unsigned iOS Simulator build made on Expo's servers, so no Apple account, CocoaPods or Ruby is needed locally. It forces the mock backend (both Supabase variables empty).
+`eas.json` has one profile, `simulator`: an unsigned iOS Simulator build made on Expo's servers, so no Apple account, CocoaPods or Ruby is needed locally. It uses the mock backend: `.env.local` is git-ignored, so EAS doesn't upload it. Don't add `EXPO_PUBLIC_SUPABASE_*` variables to this profile or as EAS environment variables until US-10.
 
 ```sh
 cd app
