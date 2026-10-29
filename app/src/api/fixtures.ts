@@ -1,4 +1,4 @@
-import type { IsoDate, Task, TaskKind } from './types';
+import type { Enrichment, IsoDate, Task, TaskKind } from './types';
 import { addDays } from '@/lib/dates';
 
 // Synthetic fixtures only. No real people, places or personal data.
@@ -14,6 +14,7 @@ interface Seed {
   dueOffset: number | null;
   needsReview?: boolean;
   script?: string;
+  capture?: boolean;
 }
 
 const SEEDS: Seed[] = [
@@ -25,10 +26,11 @@ const SEEDS: Seed[] = [
     carry: 0,
     dueOffset: null,
     script: 'Hi, I would like to move my cleaning to a later week. Do you have anything open in the next two weeks?',
+    capture: true,
   },
   { id: 'q2', kind: 'quick', title: 'Reply to the building manager about the fence', effort: 10, carry: 1, dueOffset: null },
   { id: 'q3', kind: 'quick', title: 'Pay the water bill', effort: 5, carry: 0, dueOffset: 0 },
-  { id: 'e1', kind: 'errand', title: 'Return the package at the post office', effort: 20, carry: 0, dueOffset: 0 },
+  { id: 'e1', kind: 'errand', title: 'Return the package at the post office', effort: 20, carry: 0, dueOffset: 0, capture: true },
   { id: 'e2', kind: 'errand', title: 'Pick up dry cleaning', effort: 15, carry: 2, dueOffset: null },
   { id: 'b1', kind: 'project', title: 'Renew passport', effort: 60, carry: 0, dueOffset: null },
   // Synthetic extraction fallback: the whole (fake) transcript saved as one task, flagged for review.
@@ -43,16 +45,21 @@ const SEEDS: Seed[] = [
   },
 ];
 
+/** The synthetic voice note the seeded "Call the dentist" and "Return the package" tasks came from. */
+export const MOCK_SEED_CAPTURE_ID = '00000000-0000-4000-a000-0000000000c1';
+export const MOCK_SEED_TRANSCRIPT =
+  'Okay, I need to call the dentist and move my cleaning, and I should return that package at the post office before it closes.';
+
 /**
- * Placeholder "Found for you" data (Apple Maps phone, address and hours only), keyed by task id.
- * The API has no enrichments endpoint yet, so the app reads this from the mock. All synthetic.
+ * Synthetic "Found for you" rows (Apple Maps phone, address and hours), keyed by task id.
+ * The mock's getTask reads these; the live client reads task_enrichments.
  */
-export function mockEnrichments(taskId: string): { type: 'phone' | 'address' | 'hours'; value: string }[] {
-  if (taskId === uuidFor('q1')) return [{ type: 'phone', value: '(555) 010-0142' }];
+export function mockEnrichments(taskId: string): Enrichment[] {
+  if (taskId === uuidFor('q1')) return [{ id: 'en-q1-phone', type: 'phone', value: '(555) 010-0142', sourceUrl: null }];
   if (taskId === uuidFor('e1')) {
     return [
-      { type: 'address', value: '100 Example Street, Springfield' },
-      { type: 'hours', value: 'Open until 6 PM today' },
+      { id: 'en-e1-address', type: 'address', value: '100 Example Street, Springfield', sourceUrl: null },
+      { id: 'en-e1-hours', type: 'hours', value: 'Open until 6 PM today', sourceUrl: null },
     ];
   }
   return [];
@@ -107,6 +114,7 @@ export function seedTasks(today: IsoDate): Task[] {
         due_date: s.dueOffset === null ? null : addDays(today, s.dueOffset),
         needs_review: s.needsReview ?? false,
         script: s.script ?? null,
+        capture_id: s.capture ? MOCK_SEED_CAPTURE_ID : null,
         sort_order: i,
       },
       today,
