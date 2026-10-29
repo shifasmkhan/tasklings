@@ -1,9 +1,26 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 
+import { clearCaptureLaunch, peekCaptureLaunch } from '@/features/capture/captureLaunch';
+import { releaseIntentCover } from '@/features/capture/intentLaunch';
 import { CaptureSheet, COPY } from '@/features/capture/CaptureSheet';
 
+/**
+ * Deliberately reads NO route parameters. `tasklings://capture` (or `?start=lock&...`) from another
+ * app or a web page must open the sheet idle; only our own code can arm auto-start, in-process
+ * (see captureLaunch.ts).
+ */
 export default function CaptureRoute() {
   const router = useRouter();
-  const { start, hint } = useLocalSearchParams<{ start?: string; hint?: string }>();
-  return <CaptureSheet onClose={() => router.back()} startLocked={start === 'lock'} hint={hint === 'first' ? COPY.firstNoteHint : undefined} />;
+  // A cold `tasklings://capture` has no screen under the sheet: land on Today (which sends a
+  // first-run user to onboarding) instead of going back to nothing.
+  const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const [launch] = useState(peekCaptureLaunch);
+  // Read once, then drop the flag so it can't apply to a later open.
+  useEffect(() => {
+    clearCaptureLaunch();
+    // However the sheet goes away (button, swipe down), Today may show tasks again.
+    return releaseIntentCover;
+  }, []);
+  return <CaptureSheet onClose={close} startLocked={launch.autoStart} hint={launch.firstNoteHint ? COPY.firstNoteHint : undefined} />;
 }
