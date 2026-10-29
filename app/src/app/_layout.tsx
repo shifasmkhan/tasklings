@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/ApiProvider';
 import { CaptureProvider } from '@/features/capture/CaptureProvider';
+import { OnboardingProvider } from '@/features/onboarding/OnboardingProvider';
 import { dark, light } from '@/theme/colors';
 
 export default function RootLayout() {
@@ -21,11 +22,13 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: p.background }}>
       <SafeAreaProvider>
         <ApiProvider>
+          <OnboardingProvider>
           <CaptureProvider>
             <ThemeProvider value={theme}>
               <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
               <Stack screenOptions={{ contentStyle: { backgroundColor: p.background } }}>
                 <Stack.Screen name="index" options={{ headerShown: false, title: 'Today' }} />
+                <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false, title: 'Welcome' }} />
                 <Stack.Screen name="capture" options={{ presentation: 'formSheet', title: 'Capture', headerShown: false }} />
                 <Stack.Screen name="task/[id]" options={{ title: 'Task' }} />
                 <Stack.Screen name="settings" options={{ title: 'Settings' }} />
@@ -33,6 +36,7 @@ export default function RootLayout() {
               </Stack>
             </ThemeProvider>
           </CaptureProvider>
+          </OnboardingProvider>
         </ApiProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

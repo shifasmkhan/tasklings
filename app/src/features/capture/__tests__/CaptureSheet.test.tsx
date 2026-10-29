@@ -462,3 +462,20 @@ describe('Capture sheet: accessibility and appearance', () => {
     expect(StyleSheet.flatten(title.props.style)).toMatchObject({ color: palette.text });
   });
 });
+
+describe('Capture sheet hint (US-19)', () => {
+  it('shows the guidance line only when given', async () => {
+    const h = setup();
+    const { unmount } = await render(
+      <ApiProvider client={h.api}>
+        <CaptureProvider store={h.store}>
+          <CaptureSheet onClose={h.onClose} createRecognizer={h.createRecognizer} hint={COPY.firstNoteHint} />
+        </CaptureProvider>
+      </ApiProvider>,
+    );
+    expect(screen.getByTestId('capture-hint')).toHaveTextContent(COPY.firstNoteHint);
+    await unmount();
+    await renderSheet(setup());
+    expect(screen.queryByTestId('capture-hint')).toBeNull();
+  });
+});
