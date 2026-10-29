@@ -39,7 +39,9 @@ npm run test:ci
 | --- | --- |
 | `src/app/` | Expo Router routes: Today (`index`), `capture`, `task/[id]`, `check-in`, `settings` |
 | `src/api/` | `ApiClient` interface for every Phase 0 contract, the mock, and the live Supabase client (`supabase.ts`, realtime in `supabaseArrivals.ts`, Keychain session storage in `secureSessionStorage.ts`, backend choice in `live.ts` and `index.ts`) |
-| `src/features/capture/` | Capture sheet (US-01 voice, US-02 typing), the `SpeechRecognizer` interface and its mock, and the capture store (offline queue, results for Today, US-03) |
+| `src/features/capture/` | Capture sheet (US-01 voice, US-02 typing), the `SpeechRecognizer` interface and its mock, the capture store (offline queue, results for Today, US-03), and the system entry-point glue (`captureLaunch.ts`, `intentLaunch.ts`, `IntentLaunchHandler.tsx`) |
+| `targets/widget/` | Swift widget extension (`@bacons/apple-targets`): Home Screen mic widget, Control Center / lock screen / Action Button control; `_shared/` holds the App Intent and App Shortcut, linked into the app too |
+| `modules/` | Local Expo modules: `tasklings-speech` (on-device recognition) and `tasklings-intents` (the "launched by our own intent" flag) |
 | `src/features/today/` | Today screen (US-04), the Start here rule and grouping logic, undo (US-09) |
 | `src/features/task/` | Task detail (US-05): inline editing with autosave, script card, "Found for you", Done / Tomorrow / Drop with undo |
 | `src/features/settings/` | Settings (US-11) and Recently dropped (US-09): times, restore, export and delete, with the Apple re-sign-in seam and the share-sheet export |
@@ -61,6 +63,58 @@ npm run test:ci
 - **No result.** If no result arrives within 60 s of the 202, the Sorting row becomes "Couldn't sort your note · Try again"; Try again resends the same `capture_id`. A late result still completes the capture.
 - **Offline.** A capture that fails with `network_error` stays in the store's queue and is sent again when the app returns to the foreground. The queue is in memory only: persistent storage comes with the local SQLite store.
 - **Mock results by keyword** (`src/api/syntheticCapture.ts`): "nothing to add", "never mind" or "thinking out loud" gives zero tasks; "garbled", "fallback" or "mumbling" gives one `needs_review` task; anything else gives one task per clause (up to 10). The mock recognizer's `empty` and `fallback` scripts use these words.
+
+## Entry points (US-01)
+
+All of them open the existing Capture sheet; none forks it.
+
+| Entry point | What it is | Where |
+| --- | --- | --- |
+| **Siri / Shortcuts / Spotlight** | App Intent "Add a task" with App Shortcut phrases "Add a task in Tasklings" and "New Tasklings note" | `targets/widget/_shared/AddTaskIntent.swift` (app + extension), `plugins/app-shortcuts/TasklingsShortcuts.swift` (app target only, added by `plugins/withAppShortcuts.js`) |
+| **Action Button** | Settings > Action Button > Shortcut > Tasklings > Add a task, or > Controls > Tasklings > Add a task | same intent / the control below |
+| **Control Center and lock screen control** (iOS 18+) | `ControlWidgetButton` running the intent | `targets/widget/CaptureControl.swift` |
+| **Home Screen widget** (small) | App name and a mic button (`Button(intent:)`). Static, no data: counts and the next task are US-06 and need an App Group summary store, which is not added | `targets/widget/MicWidget.swift` |
+| **Deep link** `tasklings://capture` | Opens the sheet **idle**, like a long press. Opened cold, there is no screen under it, so closing it goes to Today (and Today sends a first-run user to onboarding) | `src/app/capture.tsx` |
+
+The widget extension targets iOS 17; the Control is wrapped in `if #available(iOS 18.0, *)` in the widget bundle. The app itself targets iOS 16.4.
+
+### Auto-start rule (security)
+
+Starting the microphone must never be triggerable by another app or a web page.
+
+- **Only our own App Intent starts recording on open.** The intent (`openAppWhenRun`, foreground only; there is no background-recording intent) writes a timestamp to the app's private `UserDefaults` (not an App Group) and posts an in-process notification. The `tasklings-intents` module's `consumePendingLaunch()` returns true **once** per run and only if the timestamp is under 15 s old. `IntentLaunchHandler` checks it at startup (before the first render), on the `onIntentLaunch` event and when the app becomes active, then opens `/capture` and arms auto-start.
+- **No URL parameter can start recording.** `src/app/capture.tsx` reads no route params at all; `?start=lock`, `?hint=...` and anything else are ignored. In-app starts (Today's tap, onboarding) use the same one-shot in-process flag (`captureLaunch.ts`, expires after 5 s, cleared by the sheet after reading) instead of the old `start=lock` URL parameter.
+- No new permissions: the existing microphone and speech strings cover it. The first ever run still shows the permission prompts from the sheet, and an intent launch before onboarding is complete is dropped (onboarding first).
+
+### Which process runs the intent
+
+`AddTaskIntent` is in both the app and the extension, with `openAppWhenRun`; on iOS 26+ it also declares `supportedModes = .foreground` so the system runs `perform()` in the app, where the private flag can be read. Before iOS 26, widget and control runs rely on `openAppWhenRun` alone. If a run ever lands in the extension process, the flag never reaches the app: the app opens and the sheet does not auto-record (safe, but not what we want). There is no App Group to bridge it, by design.
+
+**Verified only by the CI build (compiles, not exercised): need a device check** on iOS 18 to 25 and on iOS 26: Home Screen widget button, Control Center control, lock screen control, Action Button, Siri/Shortcuts phrases, and that each opens the sheet already recording.
+
+### Nothing existing is shown
+
+After an intent launch, Today renders a neutral background (not the task list) until the Capture sheet closes, however it closes. On a warm start the app also dismisses back to the root first, so no task detail sits behind the sheet. The Home Screen widget and the control read no task data at all.
+
+### Locked device
+
+`openAppWhenRun` means iOS asks for Face ID / passcode before it foregrounds Tasklings from the lock screen or Action Button. That is accepted for the MVP: capture starts as soon as the app is up. A background-recording intent is out of scope.
+
+### Offline
+
+The sheet saves through `CaptureStore`, so an offline capture waits in the queue and is sent when the app returns to the foreground (see "Offline" above).
+
+### Try each one in the Simulator
+
+Rebuild the native app first (`npx expo prebuild --platform ios --clean`, then run it); the widget extension is new. Free Apple accounts: every extension needs its own App ID, and `ios.appleTeamId` should be set in `app.json` for device builds (the build warns while it is missing).
+
+- **Shortcuts app:** open Shortcuts > App Shortcuts (or search "Tasklings") and run "Add a task". Tasklings opens with the sheet recording. The Action Button can be pointed at it on a device.
+- **Control Center (iOS 18+ Simulator):** swipe down, long-press empty space > Add a Control > Tasklings > Add a task. For the lock screen, long-press the lock screen > Customize > Lock Screen and replace a bottom control. Tapping it asks to unlock (the Simulator accepts Face ID with Features > Face ID > Matching Face) and then opens recording.
+- **Widget gallery:** long-press the Home Screen > + > Tasklings > small "Add a task" widget. Tap the mic.
+- **Siri:** say or type "Add a task in Tasklings" (Simulator: Siri via Device > Siri).
+- **Deep link:** `xcrun simctl openurl booted "tasklings://capture?start=lock"` must open the sheet idle.
+
+What can't be checked without a physical iPhone: the Action Button itself, the real lock screen unlock flow, and the "recording starts within 1 s" timing on a cold launch.
 
 ## Task detail and Evening check-in (US-05, US-07, US-12)
 

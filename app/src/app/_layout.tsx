@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/ApiProvider';
+import { IntentLaunchHandler } from '@/features/capture/IntentLaunchHandler';
 import { CaptureProvider } from '@/features/capture/CaptureProvider';
 import { OnboardingProvider } from '@/features/onboarding/OnboardingProvider';
 import { dark, light } from '@/theme/colors';
@@ -25,6 +26,7 @@ export default function RootLayout() {
           <OnboardingProvider>
           <CaptureProvider>
             <ThemeProvider value={theme}>
+              <IntentLaunchHandler />
               <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
               <Stack screenOptions={{ contentStyle: { backgroundColor: p.background } }}>
                 <Stack.Screen name="index" options={{ headerShown: false, title: 'Today' }} />

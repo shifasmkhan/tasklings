@@ -3,6 +3,8 @@ import { useCallback, useRef, useState } from 'react';
 
 import { View } from 'react-native';
 
+import { armCaptureLaunch } from '@/features/capture/captureLaunch';
+import { useIntentCover } from '@/features/capture/intentLaunch';
 import { useOnboardingGate } from '@/features/onboarding/OnboardingProvider';
 import { usePalette } from '@/theme/colors';
 import { TodayScreen } from '@/features/today/TodayScreen';
@@ -11,7 +13,9 @@ import { TodayScreen } from '@/features/today/TodayScreen';
 export default function TodayRoute() {
   const gate = useOnboardingGate();
   const p = usePalette();
-  if (gate.status === 'loading') return <View style={{ flex: 1, backgroundColor: p.background }} />;
+  // Launched by our App Intent (lock screen, Action Button, Control Center): no tasks behind the sheet.
+  const covered = useIntentCover();
+  if (gate.status === 'loading' || covered) return <View style={{ flex: 1, backgroundColor: p.background }} />;
   if (gate.status === 'needed') return <Redirect href="/onboarding" />;
   return <TodayContent />;
 }
@@ -36,8 +40,11 @@ function TodayContent() {
     <TodayScreen
       refreshKey={refreshKey}
       nav={{
-        openCapture: (options) =>
-          router.push(options?.startLocked ? { pathname: '/capture', params: { start: 'lock' } } : '/capture'),
+        openCapture: (options) => {
+          // In-process, never a URL parameter: see captureLaunch.ts.
+          if (options?.startLocked) armCaptureLaunch({ autoStart: true });
+          router.push('/capture');
+        },
         // Only the ID goes in the URL: task titles never leave the in-memory state.
         openTask: (task) => router.push({ pathname: '/task/[id]', params: { id: task.id } }),
         openCheckIn: () => router.push('/check-in'),
