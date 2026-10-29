@@ -7,6 +7,7 @@ import type {
   ApiClient,
   CaptureSource,
   DroppedReason,
+  Enrichment,
   IsoDate,
   ProcessCaptureRequest,
   ProcessCaptureResponse,
@@ -35,6 +36,10 @@ export interface MockApiOptions {
    * realtime push). Default 1200 ms.
    */
   captureResultDelayMs?: number;
+  /** Test seam: transcripts by capture_id, beside the seeded synthetic one. */
+  transcripts?: Record<string, string>;
+  /** Test seam: enrichments by task id; defaults to the synthetic fixtures. */
+  enrichments?: (taskId: string) => Enrichment[];
 }
 
 export interface MockApiClient extends ApiClient {
@@ -90,7 +95,10 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
   const timers = new Set<ReturnType<typeof setTimeout>>();
   let profile = defaultProfile();
   // Transcripts of captures, by capture_id: the seeded synthetic note plus every accepted capture.
-  const transcripts = new Map<string, string>([[MOCK_SEED_CAPTURE_ID, MOCK_SEED_TRANSCRIPT]]);
+  const transcripts = new Map<string, string>([
+    [MOCK_SEED_CAPTURE_ID, MOCK_SEED_TRANSCRIPT],
+    ...Object.entries(options.transcripts ?? {}),
+  ]);
 
   for (const t of options.tasks ?? seedTasks(today())) tasks.set(t.id, { ...t });
 
@@ -355,7 +363,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
         return {
           ...t,
           transcript: t.capture_id ? (transcripts.get(t.capture_id) ?? null) : null,
-          enrichments: mockEnrichments(id),
+          enrichments: (options.enrichments ?? mockEnrichments)(id),
         };
       });
     },

@@ -18,12 +18,13 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
 const TODAY = localIsoDate();
 const mk = (id: string, over: Partial<Task> = {}) => makeTask({ id, title: `Title ${id}`, kind: 'quick', ...over }, TODAY);
 
-async function renderCheckIn(tasks: Task[], briefTime?: string | null) {
+async function renderCheckIn(tasks: Task[], briefTime?: string) {
   const api = createMockApi({ tasks, today: () => TODAY });
+  if (briefTime) await api.updateProfileTimes({ briefTime });
   const onClose = jest.fn();
   await render(
     <ApiProvider client={api}>
-      <CheckInScreen onClose={onClose} today={TODAY} briefTime={briefTime} />
+      <CheckInScreen onClose={onClose} today={TODAY} />
     </ApiProvider>,
   );
   await screen.findByLabelText(/^Card \d+ of \d+$|^Loading/);
@@ -136,7 +137,7 @@ describe('Evening check-in (US-07, US-12)', () => {
   });
 
   describe('summary', () => {
-    it('counts the outcomes, mentions the roll-over and the default brief time, then Good night closes', async () => {
+    it('counts the outcomes, mentions the roll-over and the brief time from the profile, then Good night closes', async () => {
       const tasks = [
         mk('d', { sort_order: 0 }),
         mk('t', { sort_order: 1 }),
@@ -151,18 +152,32 @@ describe('Evening check-in (US-07, US-12)', () => {
       for (let i = 0; i < 4; i += 1) await user().press(screen.getByRole('button', { name: 'Move to tomorrow' }));
       expect(screen.getByText('1 done, 5 moved to tomorrow, 1 dropped.')).toBeOnTheScreen();
       expect(screen.getByText('2 more rolled over on their own.')).toBeOnTheScreen();
-      expect(screen.getByText('Your brief will be ready at 8:00.')).toBeOnTheScreen();
-      expect(screen.getByText(/usual time/)).toBeOnTheScreen();
+      expect(await screen.findByText('Your brief will be ready at 8:00 AM.')).toBeOnTheScreen();
+      expect(screen.queryByText(/usual time/)).not.toBeOnTheScreen();
       await user().press(screen.getByRole('button', { name: 'Good night' }));
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('uses the profile brief time when it is given, with no note', async () => {
-      await renderCheckIn([mk('a')], '7:30');
+    it('uses the profile brief time, however it was set', async () => {
+      await renderCheckIn([mk('a')], '07:30');
       await user().press(screen.getByRole('button', { name: 'Mark done' }));
-      expect(screen.getByText('Your brief will be ready at 7:30.')).toBeOnTheScreen();
+      expect(screen.getByText('Your brief will be ready at 7:30 AM.')).toBeOnTheScreen();
       expect(screen.queryByText(/usual time/)).not.toBeOnTheScreen();
       expect(screen.queryByText(/rolled over/)).not.toBeOnTheScreen();
+    });
+
+    it('leaves the brief line out when the profile can\'t be read', async () => {
+      const api = createMockApi({ tasks: [mk('a')], today: () => TODAY });
+      jest.spyOn(api, 'getProfile').mockRejectedValue(new Error('offline'));
+      await render(
+        <ApiProvider client={api}>
+          <CheckInScreen onClose={jest.fn()} today={TODAY} />
+        </ApiProvider>,
+      );
+      await screen.findByLabelText(/^Card \d+ of \d+$/);
+      await user().press(screen.getByRole('button', { name: 'Mark done' }));
+      expect(screen.getByText('1 done, 0 moved to tomorrow, 0 dropped.')).toBeOnTheScreen();
+      expect(screen.queryByText(/brief will be ready/)).not.toBeOnTheScreen();
     });
 
     it('goes straight to a calm summary when nothing is open', async () => {
@@ -178,7 +193,7 @@ describe('Evening check-in (US-07, US-12)', () => {
 
   it('offers a retry when loading fails', async () => {
     const api = createMockApi({ tasks: [mk('a')], today: () => TODAY });
-    api.failNext('network_error');
+    jest.spyOn(api, 'todayTasks').mockRejectedValueOnce(new Error('offline'));
     await render(
       <ApiProvider client={api}>
         <CheckInScreen onClose={jest.fn()} today={TODAY} />

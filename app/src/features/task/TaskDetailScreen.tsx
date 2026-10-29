@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { mockEnrichments } from '@/api/fixtures';
 import type { IsoDate } from '@/api/types';
 import { localIsoDate } from '@/lib/dates';
 import { NEEDS_REVIEW_LABEL } from '@/features/today/logic';
@@ -35,14 +34,9 @@ interface Props {
   taskId: string;
   onBack: () => void;
   today?: IsoDate;
-  /**
-   * Where "Found for you" comes from. The API has no enrichments endpoint yet, so the app passes
-   * the mock's placeholder data. TODO: swap for the real source when the contract exists.
-   */
-  enrichmentsFor?: (taskId: string) => { type: string; value: string }[];
 }
 
-export function TaskDetailScreen({ taskId, onBack, today = localIsoDate(), enrichmentsFor = mockEnrichments }: Props) {
+export function TaskDetailScreen({ taskId, onBack, today = localIsoDate() }: Props) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const d = useTaskDetail(taskId);
@@ -61,7 +55,7 @@ export function TaskDetailScreen({ taskId, onBack, today = localIsoDate(), enric
     return (
       <View style={[styles.center, { backgroundColor: p.background }]}>
         <Text style={[styles.body, { color: p.text }]}>
-          {failed ? "Couldn't load this task." : "This task isn't on Today any more."}
+          {failed ? "Couldn't load this task." : "Couldn't find this task."}
         </Text>
         {failed ? <TextButton label="Try again" color={p.accent} onPress={() => void d.reload()} /> : null}
         <TextButton label="Back to Today" color={p.accent} onPress={onBack} />
@@ -71,7 +65,7 @@ export function TaskDetailScreen({ taskId, onBack, today = localIsoDate(), enric
 
   const task = d.task;
   const open = d.outcome === null;
-  const enrichments = allowedEnrichments(enrichmentsFor(task.id));
+  const enrichments = allowedEnrichments(d.enrichments);
   const toggle = (name: MenuName) => setMenu((m) => (m === name ? null : name));
   const choose = (edit: Parameters<typeof d.save>[0]) => {
     setMenu(null);
@@ -180,7 +174,7 @@ export function TaskDetailScreen({ taskId, onBack, today = localIsoDate(), enric
             </Text>
             <View style={[styles.card, { backgroundColor: p.card }]}>
               {enrichments.map((e) => (
-                <View key={e.type} role="listitem" accessible style={styles.found} aria-label={`${ENRICHMENT_LABELS[e.type]}: ${e.value}`}>
+                <View key={e.id} role="listitem" accessible style={styles.found} aria-label={`${ENRICHMENT_LABELS[e.type]}: ${e.value}`}>
                   <Text style={[styles.foundLabel, { color: p.secondaryText }]}>{ENRICHMENT_LABELS[e.type]}</Text>
                   <Text selectable style={[styles.body, { color: p.text }]}>
                     {e.value}
@@ -191,7 +185,18 @@ export function TaskDetailScreen({ taskId, onBack, today = localIsoDate(), enric
             </View>
           </View>
         ) : null}
-        {/* "From your voice note" is left out: no API exposes a capture's transcript (see the PR). */}
+        {d.transcript !== null && d.transcript.trim() !== '' ? (
+          <View style={styles.gap8}>
+            <Text role="heading" style={[styles.sectionTitle, { color: p.secondaryText }]}>
+              FROM YOUR VOICE NOTE
+            </Text>
+            <View style={[styles.card, { backgroundColor: p.card }]}>
+              <Text selectable style={[styles.body, { color: p.text }]}>
+                {d.transcript}
+              </Text>
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
 
       {d.toast ? (

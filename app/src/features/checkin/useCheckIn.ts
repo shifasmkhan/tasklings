@@ -21,6 +21,8 @@ export function useCheckIn(today: string = localIsoDate()) {
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [cards, setCards] = useState<Task[]>([]);
   const [rolledOver, setRolledOver] = useState(0);
+  // profiles.brief_time as "HH:MM". null until read, or when it can't be: the summary then leaves the line out.
+  const [briefTime, setBriefTime] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [counts, setCounts] = useState<CheckInCounts>({ done: 0, tomorrow: 0, dropped: 0 });
   const [choosingDrop, setChoosingDrop] = useState(false);
@@ -28,6 +30,21 @@ export function useCheckIn(today: string = localIsoDate()) {
   const [error, setError] = useState<string | null>(null);
   // Blocks a second action (button then swipe) from starting while one is in flight.
   const working = useRef(false);
+
+  useEffect(() => {
+    let live = true;
+    api.getProfile().then(
+      (profile) => {
+        if (live) setBriefTime(profile.briefTime);
+      },
+      (err: unknown) => {
+        logEvent('checkin.profile_failed', { code: isApiError(err) ? err.code : 'unknown_error' });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [api]);
 
   const fetchStack = useCallback(
     () =>
@@ -96,6 +113,7 @@ export function useCheckIn(today: string = localIsoDate()) {
       reload: load,
       cards,
       rolledOver,
+      briefTime,
       index,
       current,
       finished,
@@ -112,6 +130,6 @@ export function useCheckIn(today: string = localIsoDate()) {
       tomorrow: () => run('tomorrow'),
       drop: (reason: DroppedReason | null) => run('drop', reason ?? undefined),
     }),
-    [loadState, load, cards, rolledOver, index, current, finished, counts, busy, error, choosingDrop, run],
+    [loadState, load, cards, rolledOver, briefTime, index, current, finished, counts, busy, error, choosingDrop, run],
   );
 }
