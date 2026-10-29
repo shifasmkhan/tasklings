@@ -25,19 +25,19 @@ describe('Task detail logic (US-05)', () => {
 
   it('only lets Apple Maps phone, address and hours through as "Found for you"', () => {
     const items = [
-      { type: 'phone', value: '(555) 010-0100' },
-      { type: 'url', value: 'https://example.com' },
-      { type: 'note', value: 'a note' },
-      { type: 'address', value: '' },
-      { type: 'hours', value: 'Open until 6 PM' },
+      { id: '1', type: 'phone', value: '(555) 010-0100' },
+      { id: '2', type: 'url', value: 'https://example.com' },
+      { id: '3', type: 'note', value: 'a note' },
+      { id: '4', type: 'address', value: '' },
+      { id: '5', type: 'hours', value: 'Open until 6 PM' },
     ];
     expect(allowedEnrichments(items).map((e) => e.type)).toEqual(['phone', 'hours']);
   });
 
-  it('shows a script only for quick tasks that have one', () => {
+  it('shows a script for any task that has one', () => {
     expect(showsScript(makeTask({ id: 'a', title: 'x', kind: 'quick', script: 'Hello' }, TODAY))).toBe(true);
     expect(showsScript(makeTask({ id: 'a', title: 'x', kind: 'quick', script: null }, TODAY))).toBe(false);
     expect(showsScript(makeTask({ id: 'a', title: 'x', kind: 'quick', script: '  ' }, TODAY))).toBe(false);
-    expect(showsScript(makeTask({ id: 'a', title: 'x', kind: 'errand', script: 'Hello' }, TODAY))).toBe(false);
+    expect(showsScript(makeTask({ id: 'a', title: 'x', kind: 'errand', script: 'Hello' }, TODAY))).toBe(true);
   });
 });

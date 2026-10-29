@@ -5,7 +5,7 @@ import { AccessibilityInfo } from 'react-native';
 import { ApiProvider } from '@/api/ApiProvider';
 import { makeTask } from '@/api/fixtures';
 import { createMockApi, type MockApiClient } from '@/api/mock';
-import type { Task } from '@/api/types';
+import type { Enrichment, Task } from '@/api/types';
 import { addDays, localIsoDate } from '@/lib/dates';
 import { dark, light } from '@/theme/colors';
 import { TaskDetailScreen } from '../TaskDetailScreen';
@@ -28,13 +28,13 @@ function fixtures(over: Partial<Task> = {}): Task[] {
 
 async function renderDetail(
   tasks: Task[] = fixtures(),
-  enrichmentsFor?: (id: string) => { type: string; value: string }[],
+  extras: { enrichments?: Enrichment[]; transcripts?: Record<string, string> } = {},
 ): Promise<{ api: MockApiClient; onBack: jest.Mock }> {
-  const api = createMockApi({ tasks, today: () => TODAY });
+  const api = createMockApi({ tasks, today: () => TODAY, enrichments: () => extras.enrichments ?? [], transcripts: extras.transcripts });
   const onBack = jest.fn();
   await render(
     <ApiProvider client={api}>
-      <TaskDetailScreen taskId={ID} onBack={onBack} today={TODAY} enrichmentsFor={enrichmentsFor ?? (() => [])} />
+      <TaskDetailScreen taskId={ID} onBack={onBack} today={TODAY} />
     </ApiProvider>,
   );
   await screen.findByLabelText('Task title');
@@ -168,6 +168,11 @@ describe('Task detail (US-05)', () => {
   });
 
   describe('script card', () => {
+    it('shows the script for a task of any kind, not only quick ones', async () => {
+      await renderDetail(fixtures({ kind: 'errand', script: 'An errand script.' }));
+      expect(screen.getByText('An errand script.')).toBeOnTheScreen();
+    });
+
     it('shows the script with Copy for a quick task, and Copy writes it to the clipboard', async () => {
       await renderDetail(fixtures({ script: 'Hello, this is a synthetic script.' }));
       expect(screen.getByText('Hello, this is a synthetic script.')).toBeOnTheScreen();
@@ -191,18 +196,21 @@ describe('Task detail (US-05)', () => {
 
   describe('Found for you', () => {
     it('shows Maps phone, address and hours only, as plain text with no links', async () => {
-      await renderDetail(fixtures(), () => [
-        { type: 'phone', value: '(555) 010-0100' },
-        { type: 'address', value: '1 Example Road' },
-        { type: 'hours', value: 'Open until 5 PM' },
-        { type: 'url', value: 'https://example.com/page' },
-        { type: 'note', value: 'a stray note' },
-      ]);
+      await renderDetail(fixtures(), {
+        enrichments: [
+          { id: 'e1', type: 'phone', value: '(555) 010-0100', sourceUrl: null },
+          { id: 'e2', type: 'address', value: '1 Example Road', sourceUrl: null },
+          { id: 'e3', type: 'hours', value: 'Open until 5 PM', sourceUrl: null },
+          { id: 'e4', type: 'url', value: 'https://example.com/page', sourceUrl: 'https://example.com/source' },
+          { id: 'e5', type: 'note', value: 'a stray note', sourceUrl: 'https://example.com/other' },
+        ],
+      });
       expect(screen.getByText('FOUND FOR YOU')).toBeOnTheScreen();
       expect(screen.getByText('(555) 010-0100')).toBeOnTheScreen();
       expect(screen.getByText('1 Example Road')).toBeOnTheScreen();
       expect(screen.getByText('Open until 5 PM')).toBeOnTheScreen();
       expect(screen.queryByText(/example\.com/)).not.toBeOnTheScreen();
+      expect(screen.queryByLabelText(/example\.com/)).not.toBeOnTheScreen();
       expect(screen.queryByText('a stray note')).not.toBeOnTheScreen();
       expect(screen.queryByRole('link')).not.toBeOnTheScreen();
     });
@@ -213,9 +221,24 @@ describe('Task detail (US-05)', () => {
     });
   });
 
-  it('has no "From your voice note" section: no API exposes the transcript', async () => {
-    await renderDetail(fixtures({ capture_id: '00000000-0000-4000-8000-0000000000aa' }));
-    expect(screen.queryByText(/voice note/i)).not.toBeOnTheScreen();
+  describe('From your voice note', () => {
+    const CAPTURE = '00000000-0000-4000-8000-0000000000aa';
+
+    it('shows the transcript of the capture the task came from', async () => {
+      await renderDetail(fixtures({ capture_id: CAPTURE }), { transcripts: { [CAPTURE]: 'Synthetic words from the voice note.' } });
+      expect(screen.getByText('FROM YOUR VOICE NOTE')).toBeOnTheScreen();
+      expect(screen.getByText('Synthetic words from the voice note.')).toBeOnTheScreen();
+    });
+
+    it('is absent when the task has no capture or the capture has no transcript', async () => {
+      await renderDetail(fixtures());
+      expect(screen.queryByText('FROM YOUR VOICE NOTE')).not.toBeOnTheScreen();
+    });
+  });
+
+  it('loads a task that is not on Today (dropped earlier) from getTask', async () => {
+    await renderDetail(fixtures({ status: 'dropped', dropped_reason: 'obsolete', planned_for: addDays(TODAY, -3) }));
+    expect(screen.getByLabelText('Task title').props.value).toBe('Text the neighbour');
   });
 
   describe('actions', () => {
@@ -297,15 +320,15 @@ describe('Task detail (US-05)', () => {
   });
 
   describe('missing task and accessibility', () => {
-    it('says so when the task is not on Today', async () => {
+    it('says so when the task does not exist', async () => {
       const api = createMockApi({ tasks: [], today: () => TODAY });
       const onBack = jest.fn();
       await render(
         <ApiProvider client={api}>
-          <TaskDetailScreen taskId="nope" onBack={onBack} today={TODAY} enrichmentsFor={() => []} />
+          <TaskDetailScreen taskId="nope" onBack={onBack} today={TODAY} />
         </ApiProvider>,
       );
-      expect(await screen.findByText("This task isn't on Today any more.")).toBeOnTheScreen();
+      expect(await screen.findByText("Couldn't find this task.")).toBeOnTheScreen();
       await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).press(screen.getByRole('button', { name: 'Back to Today' }));
       expect(onBack).toHaveBeenCalled();
     });
@@ -315,7 +338,7 @@ describe('Task detail (US-05)', () => {
       api.failNext('network_error');
       await render(
         <ApiProvider client={api}>
-          <TaskDetailScreen taskId={ID} onBack={jest.fn()} today={TODAY} enrichmentsFor={() => []} />
+          <TaskDetailScreen taskId={ID} onBack={jest.fn()} today={TODAY} />
         </ApiProvider>,
       );
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });

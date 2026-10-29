@@ -71,6 +71,41 @@ export interface ProcessCaptureResponse {
   capture_id: string;
 }
 
+/** "HH:MM", 24-hour, 00:00 to 23:59. Postgres `time` columns come back as "HH:MM:SS" and are normalised. */
+export type ClockTime = string;
+
+/** profiles read (PRD contract "Profile read/update", proposed 2026-10-28). */
+export interface Profile {
+  displayName: string | null;
+  /** IANA time zone. */
+  timezone: string;
+  briefTime: ClockTime;
+  checkinTime: ClockTime;
+}
+
+/** The only profile fields the app changes in the Settings screen. */
+export interface ProfileTimesInput {
+  briefTime?: ClockTime;
+  checkinTime?: ClockTime;
+}
+
+export type EnrichmentType = 'phone' | 'url' | 'address' | 'hours' | 'note';
+
+/** task_enrichments row. User-adjacent content: never log `value`. */
+export interface Enrichment {
+  id: string;
+  type: EnrichmentType;
+  value: string;
+  sourceUrl: string | null;
+}
+
+/** Task read (PRD contract "Task read", proposed 2026-10-28). */
+export type TaskDetail = Task & {
+  /** The transcript of the capture the task came from; null when it has none. User content: never log it. */
+  transcript: string | null;
+  enrichments: Enrichment[];
+};
+
 /**
  * The boundary between the app and the backend. Every Phase 0 contract is one method.
  * Implementations: mock (in-memory synthetic data) and supabase (thin HTTP client).
@@ -102,6 +137,14 @@ export interface ApiClient {
   dropTask(id: string, reason?: DroppedReason): Promise<Task>;
   /** Task edits: table update of title, kind, effort_min, due_date, notes. */
   updateTask(id: string, edit: TaskEdit): Promise<Task>;
+  /** Profile read: display name, time zone, brief and check-in times. */
+  getProfile(): Promise<Profile>;
+  /** Profile update: only brief_time and checkin_time are ever sent. Invalid "HH:MM" rejects with `invalid_request`. */
+  updateProfileTimes(input: ProfileTimesInput): Promise<Profile>;
+  /** Task read by id, with the capture transcript and the enrichments. Rejects with `not_found`. */
+  getTask(id: string): Promise<TaskDetail>;
+  /** Dropped tasks updated in the last 30 days, newest first, at most 100. Restore with undoTask. */
+  recentlyDropped(): Promise<Task[]>;
   /** register-device edge function: 204. */
   registerDevice(apnsToken: string): Promise<void>;
   /** export-data edge function: JSON file. Needs a session under 5 minutes old. */

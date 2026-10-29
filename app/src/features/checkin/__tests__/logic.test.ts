@@ -59,12 +59,16 @@ describe('Check-in helpers', () => {
   });
 
   it('words the summary', () => {
-    expect(summaryLines({ done: 3, tomorrow: 2, dropped: 1 }, 4, '8:00')).toEqual([
+    expect(summaryLines({ done: 3, tomorrow: 2, dropped: 1 }, 4, '08:00')).toEqual([
       '3 done, 2 moved to tomorrow, 1 dropped.',
       '4 more rolled over on their own.',
-      'Your brief will be ready at 8:00.',
+      'Your brief will be ready at 8:00 AM.',
     ]);
-    expect(summaryLines({ done: 0, tomorrow: 0, dropped: 0 }, 0, '7:30')).toHaveLength(2);
+    expect(summaryLines({ done: 0, tomorrow: 0, dropped: 0 }, 0, '19:30')).toEqual([
+      '0 done, 0 moved to tomorrow, 0 dropped.',
+      'Your brief will be ready at 7:30 PM.',
+    ]);
+    expect(summaryLines({ done: 0, tomorrow: 0, dropped: 0 }, 0, null)).toHaveLength(1);
     expect(moreMovedText(3)).toBe('and 3 more moved to tomorrow');
   });
 

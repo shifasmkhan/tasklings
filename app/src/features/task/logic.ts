@@ -50,7 +50,8 @@ export function effortChipLabel(minutes: number): string {
 
 /** Only these three kinds of "Found for you" are allowed: Apple Maps phone, address and hours. */
 export type EnrichmentType = 'phone' | 'address' | 'hours';
-export interface Enrichment {
+export interface FoundItem {
+  id: string;
   type: EnrichmentType;
   value: string;
 }
@@ -62,13 +63,13 @@ export const ENRICHMENT_LABELS: Record<EnrichmentType, string> = {
 };
 
 /** Drops anything that isn't a Maps phone, address or hours (urls and notes never show). */
-export function allowedEnrichments(items: readonly { type: string; value: string }[]): Enrichment[] {
+export function allowedEnrichments(items: readonly { id: string; type: string; value: string }[]): FoundItem[] {
   return items.filter(
-    (e): e is Enrichment => (e.type === 'phone' || e.type === 'address' || e.type === 'hours') && e.value.trim() !== '',
+    (e): e is FoundItem => (e.type === 'phone' || e.type === 'address' || e.type === 'hours') && e.value.trim() !== '',
   );
 }
 
-/** A script card shows for call and message tasks (quick wins) and only when a script exists. */
+/** A script card shows for any task that has a script, whatever its kind. */
 export function showsScript(task: Task): boolean {
-  return task.kind === 'quick' && task.script !== null && task.script.trim() !== '';
+  return task.script !== null && task.script.trim() !== '';
 }

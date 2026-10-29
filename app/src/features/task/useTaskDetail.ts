@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useApi } from '@/api/ApiProvider';
 import { isApiError } from '@/api/errors';
-import type { Task, TaskEdit } from '@/api/types';
+import type { Enrichment, Task, TaskEdit } from '@/api/types';
 import { logEvent } from '@/lib/log';
 import { useScreenReaderRef } from '@/lib/useScreenReader';
 import { undoWindowMs, type Toast } from '@/features/today/useToday';
@@ -20,13 +20,15 @@ function codeOf(err: unknown): string {
 }
 
 /**
- * State for Task detail (US-05). There is no get-task contract, so the task comes from
- * today_tasks(). Edits save on their own and revert on failure; actions share Today's undo rules.
+ * State for Task detail (US-05). The task comes from getTask(id), so it also works for tasks that
+ * are not on Today, and carries the voice-note transcript and enrichments. Edits save on their own and revert on failure; actions share Today's undo rules.
  */
 export function useTaskDetail(id: string) {
   const api = useApi();
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [task, setTask] = useState<Task | null>(null);
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [enrichments, setEnrichments] = useState<Enrichment[]>([]);
   const [draftTitle, setDraftTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome>(null);
@@ -67,21 +69,19 @@ export function useTaskDetail(id: string) {
 
   const fetchTask = useCallback(
     () =>
-      api.todayTasks().then(
-        (grouped) => {
-          const found = [...grouped.quick, ...grouped.errand, ...grouped.project].find((t) => t.id === id);
+      api.getTask(id).then(
+        ({ transcript: voiceNote, enrichments: found, ...row }) => {
           if (!mounted.current) return;
-          if (!found) {
-            setLoadState('missing');
-            return;
-          }
-          setTaskBoth(found);
-          setDraftBoth(found.title);
+          setTaskBoth(row);
+          setDraftBoth(row.title);
+          setTranscript(voiceNote);
+          setEnrichments(found);
           setLoadState('ready');
         },
         (err: unknown) => {
-          logEvent('task_detail.load_failed', { task_id: id, code: codeOf(err) });
-          if (mounted.current) setLoadState('error');
+          const code = codeOf(err);
+          logEvent('task_detail.load_failed', { task_id: id, code });
+          if (mounted.current) setLoadState(code === 'not_found' ? 'missing' : 'error');
         },
       ),
     [api, id],
@@ -223,6 +223,8 @@ export function useTaskDetail(id: string) {
     loadState,
     reload: load,
     task,
+    transcript,
+    enrichments,
     draftTitle,
     changeTitle,
     commitTitle: () => void commitTitle(),

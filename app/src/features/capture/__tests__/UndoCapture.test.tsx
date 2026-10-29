@@ -21,7 +21,7 @@ jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
 });
 
 const TODAY = localIsoDate();
-const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), openCheckIn: jest.fn() };
+const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), openCheckIn: jest.fn(), openSettings: jest.fn() };
 
 async function renderToday() {
   const api: MockApiClient = createMockApi({

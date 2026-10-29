@@ -11,16 +11,22 @@ import {
 } from '@supabase/supabase-js';
 
 import type { CaptureArrivals } from './arrivals';
+import { assertClockTime, normalizeClockTime } from './clockTime';
 import { ApiError, CLIENT_ERROR_CODES, toApiError } from './errors';
 import type { SessionStorage } from './secureSessionStorage';
 import { createSupabaseArrivals, TASK_COLUMNS } from './supabaseArrivals';
 import type {
   ApiClient,
   DroppedReason,
+  Enrichment,
+  EnrichmentType,
   ProcessCaptureRequest,
   ProcessCaptureResponse,
+  Profile,
+  ProfileTimesInput,
   Session,
   Task,
+  TaskDetail,
   TaskEdit,
   TaskKind,
   TodayTasks,
@@ -46,6 +52,8 @@ export interface SupabaseConfig {
   /** Refresh the access token in the background. Default true; tests turn it off. */
   autoRefreshToken?: boolean;
   fetchImpl?: typeof fetch;
+  /** Test seam: the clock for the 30-day window of recentlyDropped. */
+  now?: () => Date;
   /** Test seam: use this client instead of creating one. */
   client?: SupabaseClient;
 }
@@ -59,6 +67,13 @@ export interface SupabaseApiClient extends ApiClient {
 
 const KINDS: readonly TaskKind[] = ['quick', 'errand', 'project'];
 const EDITABLE: readonly string[] = TASK_EDITABLE_FIELDS;
+const PROFILE_COLUMNS = 'display_name,timezone,brief_time,checkin_time';
+const ENRICHMENT_COLUMNS = 'id,type,value,source_url';
+const ENRICHMENT_TYPES: readonly string[] = ['phone', 'url', 'address', 'hours', 'note'];
+/** Dropped tasks stay in "Recently dropped" this long, counted from their last update. */
+export const RECENTLY_DROPPED_DAYS = 30;
+export const RECENTLY_DROPPED_LIMIT = 100;
+const ANY_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOOPBACK = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/;
 
 /** Refuses keys that must never ship in an app: service-role JWTs and new-style secret keys. */
@@ -114,6 +129,19 @@ async function fromFunctionsError(error: unknown): Promise<ApiError> {
     return toApiError(body, typeof response.status === 'number' ? response.status : null);
   }
   return new ApiError(CLIENT_ERROR_CODES.unknown, 'Request failed');
+}
+
+function toProfile(row: unknown): Profile {
+  const r = row as { display_name?: unknown; timezone?: unknown; brief_time?: unknown; checkin_time?: unknown } | null;
+  if (!r || typeof r.timezone !== 'string') {
+    throw new ApiError(CLIENT_ERROR_CODES.badResponse, 'Unexpected profile response');
+  }
+  return {
+    displayName: typeof r.display_name === 'string' ? r.display_name : null,
+    timezone: r.timezone,
+    briefTime: normalizeClockTime(r.brief_time),
+    checkinTime: normalizeClockTime(r.checkin_time),
+  };
 }
 
 export function createSupabaseApi(config: SupabaseConfig): SupabaseApiClient {
@@ -228,12 +256,82 @@ export function createSupabaseApi(config: SupabaseConfig): SupabaseApiClient {
       return row;
     },
 
+    async getProfile(): Promise<Profile> {
+      await requireSession();
+      // RLS limits the table to the caller's own row, so there is exactly one.
+      return toProfile(unwrap<unknown>(await client.from('profiles').select(PROFILE_COLUMNS).single()));
+    },
+
+    async updateProfileTimes(input: ProfileTimesInput): Promise<Profile> {
+      // Only these two columns are ever sent, whatever the caller passed at runtime.
+      const body: { brief_time?: string; checkin_time?: string } = {};
+      if (input.briefTime !== undefined) {
+        assertClockTime(input.briefTime);
+        body.brief_time = input.briefTime;
+      }
+      if (input.checkinTime !== undefined) {
+        assertClockTime(input.checkinTime);
+        body.checkin_time = input.checkinTime;
+      }
+      if (Object.keys(body).length === 0) throw new ApiError('invalid_request', 'Nothing to update', 400);
+      const { data, error } = await client.auth.getSession();
+      if (error || !data.session) throw new ApiError('unauthenticated', 'Sign in first', 401);
+      const res = await client
+        .from('profiles')
+        .update(body)
+        .eq('user_id', data.session.user.id)
+        .select(PROFILE_COLUMNS)
+        .single();
+      return toProfile(unwrap<unknown>(res));
+    },
+
+    async getTask(id: string): Promise<TaskDetail> {
+      await requireSession();
+      if (!ANY_UUID.test(id)) throw new ApiError('not_found', 'Task not found', 404);
+      const task = unwrap<Task | null>(await client.from('tasks').select(TASK_COLUMNS).eq('id', id).maybeSingle());
+      if (!task) throw new ApiError('not_found', 'Task not found', 404);
+      const [capture, found] = await Promise.all([
+        task.capture_id
+          ? client.from('captures').select('transcript').eq('id', task.capture_id).maybeSingle()
+          : Promise.resolve({ data: null, error: null, status: 200 }),
+        client.from('task_enrichments').select(ENRICHMENT_COLUMNS).eq('task_id', id).order('created_at', { ascending: true }),
+      ]);
+      const captureRow = unwrap<{ transcript?: unknown } | null>(capture);
+      const rows = unwrap<{ id: string; type: string; value: string; source_url: string | null }[] | null>(found) ?? [];
+      const enrichments: Enrichment[] = rows
+        .filter((r) => ENRICHMENT_TYPES.includes(r.type))
+        .map((r) => ({ id: r.id, type: r.type as EnrichmentType, value: r.value, sourceUrl: r.source_url ?? null }));
+      return {
+        ...task,
+        transcript: typeof captureRow?.transcript === 'string' ? captureRow.transcript : null,
+        enrichments,
+      };
+    },
+
+    async recentlyDropped(): Promise<Task[]> {
+      await requireSession();
+      const since = new Date((config.now?.() ?? new Date()).getTime() - RECENTLY_DROPPED_DAYS * 86_400_000);
+      const rows = unwrap<Task[] | null>(
+        await client
+          .from('tasks')
+          .select(TASK_COLUMNS)
+          .eq('status', 'dropped')
+          .gte('updated_at', since.toISOString())
+          .order('updated_at', { ascending: false })
+          .limit(RECENTLY_DROPPED_LIMIT),
+      );
+      return rows ?? [];
+    },
+
     async registerDevice(apnsToken: string): Promise<void> {
       await fn('register-device', { apns_token: apnsToken });
     },
     exportData: () => fn<unknown>('export-data'),
     async deleteAccount(): Promise<void> {
       await fn('delete-account');
+      // The auth user is gone server-side. Clear the Keychain session on this device only
+      // (a global sign-out would call a server that no longer knows the user).
+      await client.auth.signOut({ scope: 'local' });
     },
   };
 }

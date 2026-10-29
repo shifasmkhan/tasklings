@@ -1,21 +1,26 @@
 import type { CaptureArrival, CaptureArrivals } from './arrivals';
 import { ApiError } from './errors';
-import { makeTask, MOCK_USER_ID, seedTasks } from './fixtures';
+import { assertClockTime } from './clockTime';
+import { makeTask, mockEnrichments, MOCK_SEED_CAPTURE_ID, MOCK_SEED_TRANSCRIPT, MOCK_USER_ID, seedTasks } from './fixtures';
 import { synthesizeCapture } from './syntheticCapture';
 import type {
   ApiClient,
   CaptureSource,
   DroppedReason,
+  Enrichment,
   IsoDate,
   ProcessCaptureRequest,
   ProcessCaptureResponse,
+  Profile,
+  ProfileTimesInput,
   Session,
   Task,
+  TaskDetail,
   TaskEdit,
   TodayTasks,
 } from './types';
 import { TASK_EDITABLE_FIELDS } from './types';
-import { addDays, localIsoDate } from '@/lib/dates';
+import { addDays, deviceTimeZone, localIsoDate } from '@/lib/dates';
 
 export interface MockApiOptions {
   /** Starting tasks. Defaults to the synthetic seed set. */
@@ -31,6 +36,10 @@ export interface MockApiOptions {
    * realtime push). Default 1200 ms.
    */
   captureResultDelayMs?: number;
+  /** Test seam: transcripts by capture_id, beside the seeded synthetic one. */
+  transcripts?: Record<string, string>;
+  /** Test seam: enrichments by task id; defaults to the synthetic fixtures. */
+  enrichments?: (taskId: string) => Enrichment[];
 }
 
 export interface MockApiClient extends ApiClient {
@@ -49,6 +58,12 @@ const CAPTURE_SOURCES: readonly string[] = ['voice', 'text', 'siri', 'widget'];
 export const UNDO_CAPTURE_WINDOW_MS = 30_000;
 
 const EDITABLE: readonly string[] = TASK_EDITABLE_FIELDS;
+const RECENTLY_DROPPED_MS = 30 * 86_400_000;
+const RECENTLY_DROPPED_LIMIT = 100;
+
+function defaultProfile(): Profile {
+  return { displayName: null, timezone: deviceTimeZone(), briefTime: '08:00', checkinTime: '20:30' };
+}
 
 let taskCounter = 0;
 /** Deterministic, unique, UUID-shaped ids for tasks the mock creates. */
@@ -78,6 +93,12 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
   const arrivalListeners = new Map<string, Set<(arrival: CaptureArrival) => void>>();
   const arrived = new Map<string, CaptureArrival>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
+  let profile = defaultProfile();
+  // Transcripts of captures, by capture_id: the seeded synthetic note plus every accepted capture.
+  const transcripts = new Map<string, string>([
+    [MOCK_SEED_CAPTURE_ID, MOCK_SEED_TRANSCRIPT],
+    ...Object.entries(options.transcripts ?? {}),
+  ]);
 
   for (const t of options.tasks ?? seedTasks(today())) tasks.set(t.id, { ...t });
 
@@ -205,6 +226,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
         }
         if (!captures.has(request.capture_id)) {
           captures.set(request.capture_id, { source: request.source ?? 'voice', finishedAt: null });
+          transcripts.set(request.capture_id, request.transcript);
           // 202 now; the tasks follow after the "extraction" delay, as they will by realtime.
           const timer = setTimeout(() => {
             timers.delete(timer);
@@ -314,6 +336,49 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
       });
     },
 
+    getProfile(): Promise<Profile> {
+      return call(() => ({ ...profile }));
+    },
+
+    updateProfileTimes(input: ProfileTimesInput): Promise<Profile> {
+      return call(() => {
+        if (input.briefTime === undefined && input.checkinTime === undefined) {
+          throw new ApiError('invalid_request', 'Nothing to update', 400);
+        }
+        if (input.briefTime !== undefined) assertClockTime(input.briefTime);
+        if (input.checkinTime !== undefined) assertClockTime(input.checkinTime);
+        profile = {
+          ...profile,
+          briefTime: input.briefTime ?? profile.briefTime,
+          checkinTime: input.checkinTime ?? profile.checkinTime,
+        };
+        return { ...profile };
+      });
+    },
+
+    getTask(id: string): Promise<TaskDetail> {
+      return call(() => {
+        const t = tasks.get(id);
+        if (!t) throw new ApiError('not_found', 'Task not found', 404);
+        return {
+          ...t,
+          transcript: t.capture_id ? (transcripts.get(t.capture_id) ?? null) : null,
+          enrichments: (options.enrichments ?? mockEnrichments)(id),
+        };
+      });
+    },
+
+    recentlyDropped(): Promise<Task[]> {
+      return call(() => {
+        const since = now().getTime() - RECENTLY_DROPPED_MS;
+        return [...tasks.values()]
+          .filter((t) => t.status === 'dropped' && Date.parse(t.updated_at) >= since)
+          .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))
+          .slice(0, RECENTLY_DROPPED_LIMIT)
+          .map((t) => ({ ...t }));
+      });
+    },
+
     registerDevice(apnsToken: string): Promise<void> {
       return call(() => {
         if (!apnsToken) throw new ApiError('invalid_request', 'Missing APNs token', 400);
@@ -325,8 +390,10 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
     },
 
     deleteAccount(): Promise<void> {
+      // The mock's stand-in for "back to a fresh install": no tasks, default profile.
       return call(() => {
         tasks.clear();
+        profile = defaultProfile();
         history.clear();
         touched.clear();
         for (const timer of timers) clearTimeout(timer);

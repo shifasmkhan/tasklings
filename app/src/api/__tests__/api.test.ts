@@ -178,3 +178,42 @@ describe('mock api', () => {
     expect(api.snapshot()).toEqual([]);
   });
 });
+
+describe('mock: profile, task read and recently dropped', () => {
+  it('reads and updates the profile times with HH:MM validation', async () => {
+    const api = createMockApi({ tasks: [], today: () => TODAY });
+    expect(await api.getProfile()).toMatchObject({ briefTime: '08:00', checkinTime: '20:30' });
+    expect(await api.updateProfileTimes({ briefTime: '07:05' })).toMatchObject({ briefTime: '07:05', checkinTime: '20:30' });
+    await expect(api.updateProfileTimes({ checkinTime: '25:00' })).rejects.toMatchObject({ code: 'invalid_request' });
+    expect((await api.getProfile()).briefTime).toBe('07:05');
+  });
+
+  it('getTask returns the transcript and enrichments, and not_found for an unknown id', async () => {
+    const api = createMockApi({ today: () => TODAY });
+    const all = api.snapshot();
+    const dentist = all.find((t) => t.title.startsWith('Call the dentist'))!;
+    const detail = await api.getTask(dentist.id);
+    expect(detail.transcript).toContain('dentist');
+    expect(detail.enrichments.map((e) => e.type)).toEqual(['phone']);
+    const plain = all.find((t) => t.capture_id === null)!;
+    expect((await api.getTask(plain.id)).transcript).toBeNull();
+    await expect(api.getTask('nope')).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('recentlyDropped lists dropped tasks from the last 30 days, newest first, and restore removes them', async () => {
+    let clock = new Date('2026-10-01T10:00:00Z');
+    const api = createMockApi({ today: () => TODAY, now: () => clock });
+    const [a, b, c] = api.snapshot();
+    await api.dropTask(a!.id);
+    clock = new Date('2026-10-20T10:00:00Z');
+    await api.dropTask(b!.id);
+    clock = new Date('2026-10-25T10:00:00Z');
+    await api.dropTask(c!.id);
+    clock = new Date('2026-10-31T10:00:00Z'); // exactly 30 days after a was dropped: still listed
+    expect((await api.recentlyDropped()).map((t) => t.id)).toEqual([c!.id, b!.id, a!.id]);
+    clock = new Date('2026-10-31T10:00:01Z');
+    expect((await api.recentlyDropped()).map((t) => t.id)).toEqual([c!.id, b!.id]);
+    await api.undoTask(c!.id);
+    expect((await api.recentlyDropped()).map((t) => t.id)).toEqual([b!.id]);
+  });
+});

@@ -1,12 +1,11 @@
 import type { DroppedReason, IsoDate, Task } from '@/api/types';
+import { formatClockTime } from '@/lib/dates';
 import { isDueByToday } from '@/features/today/logic';
 
 /** Most cards one check-in shows (US-07). */
 export const MAX_CARDS = 7;
 /** A task carried this many times gets a "Still need this?" card (US-12). Matches Stale in the PRD. */
 export const STALE_CARRY_COUNT = 5;
-/** Brief time shown when the API doesn't expose the profile's brief_time. */
-export const DEFAULT_BRIEF_TIME = '8:00';
 /** Pixels of horizontal drag that count as a swipe. */
 export const SWIPE_THRESHOLD = 110;
 
@@ -62,10 +61,16 @@ export interface CheckInCounts {
   dropped: number;
 }
 
-export function summaryLines(counts: CheckInCounts, rolledOver: number, briefTime: string): string[] {
+export function briefLine(briefTime: string | null): string | null {
+  return briefTime === null ? null : `Your brief will be ready at ${formatClockTime(briefTime)}.`;
+}
+
+/** `briefTime` is the profile's brief_time as "HH:MM"; when it couldn't be read the line is left out. */
+export function summaryLines(counts: CheckInCounts, rolledOver: number, briefTime: string | null): string[] {
   const lines = [`${counts.done} done, ${counts.tomorrow} moved to tomorrow, ${counts.dropped} dropped.`];
   if (rolledOver > 0) lines.push(`${rolledOver} more rolled over on their own.`);
-  lines.push(`Your brief will be ready at ${briefTime}.`);
+  const brief = briefLine(briefTime);
+  if (brief) lines.push(brief);
   return lines;
 }
 

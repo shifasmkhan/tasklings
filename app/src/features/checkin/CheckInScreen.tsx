@@ -5,7 +5,7 @@ import type { Task } from '@/api/types';
 import { localIsoDate } from '@/lib/dates';
 import { carriedLabel, plural, taskMeta } from '@/features/today/logic';
 import { MIN_TOUCH, usePalette, type Palette } from '@/theme/colors';
-import { DEFAULT_BRIEF_TIME, DROP_CHOICES, isStale, moreMovedText, summaryLines, swipeAction } from './logic';
+import { briefLine, DROP_CHOICES, isStale, moreMovedText, summaryLines, swipeAction } from './logic';
 import { useCheckIn } from './useCheckIn';
 
 // TODO(native/push): the notification action "Remind me in 1 hour" belongs to the push and native
@@ -14,14 +14,9 @@ import { useCheckIn } from './useCheckIn';
 interface Props {
   onClose: () => void;
   today?: string;
-  /**
-   * The user's brief time (profiles.brief_time), "H:MM". The API doesn't expose it yet, so this is
-   * null and the summary shows the default with a note.
-   */
-  briefTime?: string | null;
 }
 
-export function CheckInScreen({ onClose, today = localIsoDate(), briefTime = null }: Props) {
+export function CheckInScreen({ onClose, today = localIsoDate() }: Props) {
   const p = usePalette();
   const c = useCheckIn(today);
 
@@ -44,7 +39,7 @@ export function CheckInScreen({ onClose, today = localIsoDate(), briefTime = nul
 
   if (c.finished) {
     const empty = c.cards.length === 0;
-    const lines = summaryLines(c.counts, c.rolledOver, briefTime ?? DEFAULT_BRIEF_TIME);
+    const lines = summaryLines(c.counts, c.rolledOver, c.briefTime);
     return (
       <ScrollView style={{ backgroundColor: p.background }} contentContainerStyle={styles.summary}>
         <Text role="heading" style={[styles.h1, { color: p.text }]}>
@@ -52,16 +47,11 @@ export function CheckInScreen({ onClose, today = localIsoDate(), briefTime = nul
         </Text>
         <View style={[styles.card, styles.gap8, { backgroundColor: p.card }]} accessible>
           {empty ? <Text style={[styles.body, { color: p.text }]}>Nothing is waiting on you tonight.</Text> : null}
-          {(empty ? lines.slice(-1) : lines).map((line) => (
+          {(empty ? [briefLine(c.briefTime)].filter((l): l is string => l !== null) : lines).map((line) => (
             <Text key={line} style={[styles.body, { color: p.text }]}>
               {line}
             </Text>
           ))}
-          {briefTime === null ? (
-            <Text style={[styles.note, { color: p.secondaryText }]}>
-              That is the usual time. Your own brief time isn&apos;t shown here yet.
-            </Text>
-          ) : null}
         </View>
         <Pressable
           role="button"

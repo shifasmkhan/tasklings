@@ -12,11 +12,13 @@
     "test:ci": "jest --ci"
   },
   "dependencies": {
+    "@react-native-community/datetimepicker": "9.2.1",
     "@supabase/supabase-js": "2.118.0",
     "expo": "58.0.16",
     "expo-clipboard": "58.0.3",
     "expo-constants": "58.0.12",
     "expo-crypto": "58.0.7",
+    "expo-file-system": "58.0.10",
     "expo-haptics": "58.0.7",
     "expo-linking": "58.0.13",
     "expo-router": "58.0.24",
