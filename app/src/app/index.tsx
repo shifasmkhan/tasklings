@@ -27,6 +27,7 @@ export default function TodayRoute() {
         // Only the ID goes in the URL: task titles never leave the in-memory state.
         openTask: (task) => router.push({ pathname: '/task/[id]', params: { id: task.id } }),
         openCheckIn: () => router.push('/check-in'),
+        openSettings: () => router.push('/settings'),
       }}
     />
   );

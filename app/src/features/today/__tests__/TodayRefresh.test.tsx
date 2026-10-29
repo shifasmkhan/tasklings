@@ -17,7 +17,7 @@ jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
 });
 
 const TODAY = localIsoDate();
-const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), openCheckIn: jest.fn() };
+const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), openCheckIn: jest.fn(), openSettings: jest.fn() };
 
 describe('Today reloads when it comes back into focus (US-05)', () => {
   it('drops the Needs a look card once an edit in Task detail has cleared the flag', async () => {

@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Task } from '@/api/types';
 import { useOptionalCaptureStore, usePendingCaptures } from '@/features/capture/CaptureProvider';
-import { MoonIcon } from '@/components/icons';
+import { GearIcon, MoonIcon } from '@/components/icons';
 import { MIN_TOUCH, usePalette } from '@/theme/colors';
 import { firstNeedingReview } from './logic';
 import { AllDone, DoneToday, GroupHeader, MicBar, PendingRow, ReviewCard, StartHereCard, SummaryCard, UndoToast } from './parts';
@@ -16,6 +16,7 @@ export interface TodayNavigation {
   openCapture: (options?: { startLocked?: boolean }) => void;
   openTask: (task: Task) => void;
   openCheckIn: () => void;
+  openSettings: () => void;
 }
 
 /** First-frame guess at the mic bar's height; the real height comes from onLayout. */
@@ -72,14 +73,24 @@ export function TodayScreen({
               Today
             </Text>
           </View>
-          <Pressable
-            role="button"
-            aria-label="Open evening check-in"
-            onPress={nav.openCheckIn}
-            style={[styles.headerButton, { backgroundColor: p.card }]}
-          >
-            <MoonIcon color={p.accent} cutout={p.card} />
-          </Pressable>
+          <View style={styles.headerButtons}>
+            <Pressable
+              role="button"
+              aria-label="Settings"
+              onPress={nav.openSettings}
+              style={[styles.headerButton, { backgroundColor: p.card }]}
+            >
+              <GearIcon color={p.accent} cutout={p.card} />
+            </Pressable>
+            <Pressable
+              role="button"
+              aria-label="Open evening check-in"
+              onPress={nav.openCheckIn}
+              style={[styles.headerButton, { backgroundColor: p.card }]}
+            >
+              <MoonIcon color={p.accent} cutout={p.card} />
+            </Pressable>
+          </View>
         </View>
 
         {pending.map((c) => (
@@ -170,6 +181,7 @@ const styles = StyleSheet.create({
   headerText: { gap: 2, flexShrink: 1 },
   date: { fontSize: 13, fontWeight: '600', letterSpacing: 0.3 },
   h1: { fontSize: 34, fontWeight: '700' },
+  headerButtons: { flexDirection: 'row', gap: 8 },
   headerButton: { width: MIN_TOUCH, height: MIN_TOUCH, borderRadius: MIN_TOUCH / 2, alignItems: 'center', justifyContent: 'center' },
   loading: { marginTop: 40 },
   errorCard: { borderRadius: 14, padding: 16, gap: 8 },

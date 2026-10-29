@@ -69,7 +69,7 @@ function fixtures(): Task[] {
   ];
 }
 
-const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), openCheckIn: jest.fn() };
+const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), openCheckIn: jest.fn(), openSettings: jest.fn() };
 
 async function renderToday(
   tasks: Task[] = fixtures(),
@@ -284,6 +284,17 @@ describe('Today screen (US-04)', () => {
     expect(nav.openCheckIn).toHaveBeenCalledTimes(1);
     await user.press(screen.getByRole('button', { name: 'Text the neighbour, 5 min' }));
     expect(nav.openTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'q-plain' }));
+  });
+
+  it('has a Settings gear in the header with a 44pt target', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await renderToday();
+    const gear = screen.getByRole('button', { name: 'Settings' });
+    const flat = Object.assign({}, ...[gear.props.style].flat(2).filter(Boolean)) as { width?: number; height?: number };
+    expect(flat.width).toBeGreaterThanOrEqual(44);
+    expect(flat.height).toBeGreaterThanOrEqual(44);
+    await user.press(gear);
+    expect(nav.openSettings).toHaveBeenCalledTimes(1);
   });
 
   it('exposes Mark done, Tomorrow and Drop as VoiceOver actions on each row', async () => {

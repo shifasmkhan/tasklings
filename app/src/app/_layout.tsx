@@ -28,6 +28,7 @@ export default function RootLayout() {
                 <Stack.Screen name="index" options={{ headerShown: false, title: 'Today' }} />
                 <Stack.Screen name="capture" options={{ presentation: 'formSheet', title: 'Capture', headerShown: false }} />
                 <Stack.Screen name="task/[id]" options={{ title: 'Task' }} />
+                <Stack.Screen name="settings" options={{ title: 'Settings' }} />
                 <Stack.Screen name="check-in" options={{ presentation: 'modal', title: 'Evening check-in' }} />
               </Stack>
             </ThemeProvider>
