@@ -32,7 +32,7 @@ Audio never leaves the phone: speech recognition runs on device (SFSpeechRecogni
 |---|---|---|
 | Transcripts and task contents | `captures.transcript`, `tasks.*`, the phone | A running log of someone's day: health errands, family, names, numbers |
 | Supabase session | iOS Keychain (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`), chunked | Full access to the user's rows |
-| Apple refresh token (planned) | `public.apple_credentials`, service role only | Needed today for revocation; see TM-02, which proposes not storing it at all |
+| Apple tokens | Not stored (TM-02). The one-time authorization code passes through delete-account memory only; the Apple signing key is a function secret | Exchanged and revoked within one request; never logged or persisted |
 | Claude API key | Edge function secret | Cost and abuse |
 | Service-role key | Edge function secret, used by `delete-account` and scheduled jobs only | Bypasses RLS |
 | Extraction budget | `private.extraction_limits` / `extraction_usage` | Availability for every user |
@@ -96,7 +96,7 @@ Severity is for the MVP and a 10-person beta. "Before beta" means before the hos
 | ID | Sev | Finding | Recommendation | Status |
 |---|---|---|---|---|
 | TM-01 | Medium | Sign-up is open to any Apple ID. Ten throwaway accounts at 50 extractions each use up the 500-a-day global cap, so every other user's notes fall back to Needs a look for the rest of the day. | Beta is invite-only: in the hosted project, turn sign-ups off once the friends have joined (no code), or add an Auth "before user created" hook with an allowlist if friends join over time. | Open, before beta |
-| TM-02 | Medium | Apple token revocation can't work as designed. Native Sign in with Apple through `signInWithIdToken` never gives the server a refresh token, so `apple_credentials` would stay empty; revocation also needs a client secret signed with the Apple key. App Store rules require revocation on account deletion. | Don't store Apple tokens at all. delete-account already needs a fresh Sign in with Apple; send that sign-in's one-time `authorization_code` with the request, exchange it with Apple server-side and revoke at once, then delete. Drop `apple_credentials`. Needs a PRD contract change (proposed). | Open, with US-10 |
+| TM-02 | Medium | Apple token revocation can't work as designed. Native Sign in with Apple through `signInWithIdToken` never gives the server a refresh token, so `apple_credentials` would stay empty; revocation also needs a client secret signed with the Apple key. App Store rules require revocation on account deletion. | Don't store Apple tokens at all. delete-account already needs a fresh Sign in with Apple; send that sign-in's one-time `authorization_code` with the request, exchange it with Apple server-side and revoke at once, then delete. Drop `apple_credentials`. Owner-approved 2026-10-30 and in the PRD: request `{apple_authorization_code}`; `apple_credentials` dropped. If Apple rejects the code, nothing is deleted (`apple_code_invalid`); if Apple is unreachable or unconfigured, the account is still deleted and the outcome logged. | Fixed in this PR. The real Apple exchange is untested until the paid membership and US-10 |
 | TM-03 | Medium | New capture entry points could let another app or a web page open a URL that starts recording, or show tasks on the lock screen. | Requirements set on the US-01 entry-points PR (above); verify in review. | In progress |
 | TM-04 | Low | Clients can update their own `captures.status`, `transcript` and `error`, because process-capture runs as the caller and needs those grants. Impact stays inside the user's own rows: caps still apply to every model call, and a duplicate retry is blocked by `hasTasks`. | Accept for the MVP. If it ever matters, move capture status changes into an RPC with the same flag-trigger pattern as tasks. | Accepted |
 | TM-05 | Low | Realtime broadcast/presence on public channels is usable by anyone with the anon key as free pub/sub (no data exposure: postgres changes still apply RLS). | In the hosted project, turn off public channel access (private channels only). | Open, before beta |
@@ -114,7 +114,7 @@ No high findings are open.
 - [ ] Auth: refresh-token rotation on, reuse interval 10 s, access-token lifetime 1 hour.
 - [ ] Realtime: public channel access off (TM-05).
 - [ ] API: only `public` exposed; `private` not in the exposed schemas.
-- [ ] Edge functions deployed with `verify_jwt = true`; secrets set: Claude API key, Apple key (TM-02); service-role key only where documented.
+- [ ] Edge functions deployed with `verify_jwt = true`; secrets set: Claude API key, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (TM-02; `APPLE_CLIENT_ID` optional); service-role key only where documented.
 - [ ] Claude API: a workspace with a spend limit for this app; confirm data retention terms before writing the privacy note.
 - [ ] Storage: no buckets (audio never leaves the phone).
 - [ ] Backups: note the retention window in the privacy note (deleted accounts persist in backups until then).

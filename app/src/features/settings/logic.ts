@@ -41,6 +41,8 @@ export function dataErrorMessage(err: unknown): string | null {
       return null;
     case 'unauthenticated':
       return "Sign in with Apple isn't set up yet.";
+    case 'apple_code_invalid':
+      return 'Sign in with Apple again to delete your account.';
     case 'reauth_required':
       return 'For your security, sign in with Apple again, then try once more.';
     case 'network_error':

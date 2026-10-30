@@ -25,11 +25,9 @@ insert into public.task_enrichments (task_id, user_id, type, value) values
   ('20000000-0000-4000-a000-00000000000a', '00000000-0000-4000-a000-00000000000a', 'note', 'synthetic note');
 insert into public.device_tokens (user_id, apns_token) values
   ('00000000-0000-4000-a000-00000000000a', repeat('ab', 32));
-insert into public.apple_credentials (user_id, apple_refresh_token) values
-  ('00000000-0000-4000-a000-00000000000a', 'synthetic-ciphertext');
 
 -- ---------------------------------------------------------------------------
--- Structure: RLS everywhere, nothing for anon, apple token unreadable by clients.
+-- Structure: RLS everywhere, nothing for anon, no Apple token storage anywhere (TM-02).
 -- ---------------------------------------------------------------------------
 select ok(c.relrowsecurity, 'RLS enabled on public.' || c.relname)
 from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -46,13 +44,10 @@ from pg_class c join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relkind = 'r'
 order by c.relname;
 
-select ok(not has_table_privilege('authenticated', 'public.apple_credentials', 'SELECT,INSERT,UPDATE,DELETE'),
-          'authenticated has no privileges on apple_credentials');
-select ok(not has_column_privilege('authenticated', 'public.apple_credentials', 'apple_refresh_token', 'SELECT'),
-          'authenticated cannot select apple_refresh_token');
+select ok(to_regclass('public.apple_credentials') is null, 'apple_credentials is gone (TM-02)');
 select ok(not exists (select 1 from information_schema.columns
-                      where table_schema = 'public' and table_name = 'profiles' and column_name = 'apple_refresh_token'),
-          'profiles has no apple_refresh_token column');
+                      where table_schema = 'public' and column_name ilike '%apple%'),
+          'no column in public stores Apple data');
 
 -- Task columns clients may and may not update directly.
 select ok(has_column_privilege('authenticated', 'public.tasks', col, 'UPDATE'), 'authenticated may update tasks.' || col)
@@ -86,7 +81,6 @@ select is((select count(*)::int from public.tasks), 0, 'B cannot see A tasks');
 select is((select count(*)::int from public.task_steps), 0, 'B cannot see A task_steps');
 select is((select count(*)::int from public.task_enrichments), 0, 'B cannot see A task_enrichments');
 select is((select count(*)::int from public.device_tokens), 0, 'B cannot see A device_tokens');
-select throws_ok('select * from public.apple_credentials', '42501', null, 'B cannot read apple_credentials');
 
 select results_eq(
   $$ with u as (update public.tasks set title = 'Hijacked' where id = '20000000-0000-4000-a000-00000000000a' returning 1) select count(*)::int from u $$,

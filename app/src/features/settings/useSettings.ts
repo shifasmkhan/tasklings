@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useApi } from '@/api/ApiProvider';
+import { ApiError } from '@/api/errors';
 import type { Profile, Task } from '@/api/types';
 import { logEvent } from '@/lib/log';
 import { useScreenReaderRef } from '@/lib/useScreenReader';
 import { undoWindowMs, type Toast } from '@/features/today/useToday';
-import type { AppleCredentialSource } from '@/features/auth/appleCredential';
+import type { AppleCredential, AppleCredentialSource } from '@/features/auth/appleCredential';
 import type { ExportSharer } from './exportShare';
 import {
   codeOf,
@@ -202,7 +203,7 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
 
   /** Fresh Sign in with Apple first (the server needs a session under 5 minutes old), then the call. */
   const withFreshSignIn = useCallback(
-    async (action: DataAction, run: () => Promise<void>) => {
+    async (action: DataAction, run: (credential: AppleCredential) => Promise<void>) => {
       if (working) return;
       setWorking(action);
       setDataError(null);
@@ -210,7 +211,7 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
       try {
         const credential = await credentialSource();
         await api.signInWithApple(credential.identityToken, credential.rawNonce);
-        await run();
+        await run(credential);
       } catch (err) {
         logEvent(`settings.${action}_failed`, { code: codeOf(err) });
         if (mounted.current) setDataError(dataErrorMessage(err));
@@ -242,8 +243,11 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
 
   const confirmDelete = useCallback(async () => {
     setConfirmingDelete(false);
-    await withFreshSignIn('delete', async () => {
-      await api.deleteAccount();
+    await withFreshSignIn('delete', async (credential) => {
+      // The code from this same sign-in lets the server revoke it with Apple. Without one the
+      // account can't be deleted properly, so say sign-in isn't set up instead of guessing.
+      if (!credential.authorizationCode) throw new ApiError('unauthenticated', 'No authorization code');
+      await api.deleteAccount(credential.authorizationCode);
       logEvent('settings.account_deleted', {});
       onAccountDeleted();
     });

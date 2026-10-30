@@ -149,6 +149,11 @@ export interface ApiClient {
   registerDevice(apnsToken: string): Promise<void>;
   /** export-data edge function: JSON file. Needs a session under 5 minutes old. */
   exportData(): Promise<unknown>;
-  /** delete-account edge function: 204. Needs a session under 5 minutes old. */
-  deleteAccount(): Promise<void>;
+  /**
+   * delete-account edge function: 204. Needs a session under 5 minutes old and the one-time
+   * authorization code from that same Sign in with Apple, which the server uses to revoke the
+   * Apple sign-in (TM-02). Rejects with `apple_code_invalid` if Apple refuses the code; nothing
+   * is deleted then. An empty code rejects with `invalid_argument`.
+   */
+  deleteAccount(appleAuthorizationCode: string): Promise<void>;
 }

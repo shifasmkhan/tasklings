@@ -389,9 +389,12 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
       return call(() => ({ tasks: [...tasks.values()].map((t) => ({ ...t })) }));
     },
 
-    deleteAccount(): Promise<void> {
+    deleteAccount(appleAuthorizationCode: string): Promise<void> {
       // The mock's stand-in for "back to a fresh install": no tasks, default profile.
       return call(() => {
+        if (!appleAuthorizationCode) {
+          throw new ApiError('invalid_argument', 'Apple authorization code is required', 400);
+        }
         tasks.clear();
         profile = defaultProfile();
         history.clear();
