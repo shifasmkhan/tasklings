@@ -69,7 +69,7 @@ describe('Onboarding flow (US-19)', () => {
   it('signs in with the shared credential source', async () => {
     const api = createMockApi({ tasks: [] });
     const signIn = jest.spyOn(api, 'signInWithApple');
-    const credentials = jest.fn().mockResolvedValue({ identityToken: 'tok', rawNonce: 'raw' });
+    const credentials = jest.fn().mockResolvedValue({ identityToken: 'tok', rawNonce: 'raw', authorizationCode: null });
     await renderFlow({ api, credentials });
     await press('Get started');
     await press('Sign in with Apple');

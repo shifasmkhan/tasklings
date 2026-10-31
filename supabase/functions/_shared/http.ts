@@ -9,6 +9,7 @@ export type ErrorCode =
   | "unsupported_media_type"
   | "payload_too_large"
   | "reauth_required"
+  | "apple_code_invalid"
   | "capture_conflict"
   | "internal_error";
 

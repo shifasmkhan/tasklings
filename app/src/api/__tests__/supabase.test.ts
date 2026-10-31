@@ -305,8 +305,9 @@ describe('supabase client: edge functions', () => {
     await expect(exp.client.exportData()).resolves.toEqual({ tasks: [] });
     expect(call(exp.fetchImpl).url).toContain('/functions/v1/export-data');
     const del = api({ status: 204 });
-    await expect(del.client.deleteAccount()).resolves.toBeUndefined();
+    await expect(del.client.deleteAccount('synthetic-code')).resolves.toBeUndefined();
     expect(call(del.fetchImpl).url).toContain('/functions/v1/delete-account');
+    expect(call(del.fetchImpl).body).toEqual({ apple_authorization_code: 'synthetic-code' });
   });
 });
 
@@ -457,10 +458,16 @@ describe('supabase client: recently dropped (US-09)', () => {
 describe('supabase client: delete-account', () => {
   it('clears the stored session after the account is deleted, and not when it fails', async () => {
     const ok = api({ status: 204 });
-    await ok.client.deleteAccount();
+    await ok.client.deleteAccount('synthetic-code');
     expect(ok.storage.map.size).toBe(0);
     const stale = api({ status: 403, body: { error: { code: 'reauth_required', message: 'Sign in again' } } });
-    await expect(stale.client.deleteAccount()).rejects.toMatchObject({ code: 'reauth_required' });
+    await expect(stale.client.deleteAccount('synthetic-code')).rejects.toMatchObject({ code: 'reauth_required' });
     expect(stale.storage.map.size).toBeGreaterThan(0);
+    const bad = api({ status: 400, body: { error: { code: 'apple_code_invalid', message: 'Sign in with Apple again' } } });
+    await expect(bad.client.deleteAccount('synthetic-code')).rejects.toMatchObject({ code: 'apple_code_invalid' });
+    expect(bad.storage.map.size).toBeGreaterThan(0);
+    const none = api({ status: 204 });
+    await expect(none.client.deleteAccount('')).rejects.toMatchObject({ code: 'invalid_argument' });
+    expect(none.fetchImpl).not.toHaveBeenCalled();
   });
 });

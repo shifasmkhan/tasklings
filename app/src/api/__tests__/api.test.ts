@@ -174,7 +174,9 @@ describe('mock api', () => {
     ).toEqual({ capture_id: 'c1' });
     await expect(api.registerDevice('synthetic-apns')).resolves.toBeUndefined();
     expect(await api.exportData()).toHaveProperty('tasks');
-    await api.deleteAccount();
+    await expect(api.deleteAccount('')).rejects.toMatchObject({ code: 'invalid_argument' });
+    expect(api.snapshot()).not.toEqual([]);
+    await api.deleteAccount('synthetic-code');
     expect(api.snapshot()).toEqual([]);
   });
 });

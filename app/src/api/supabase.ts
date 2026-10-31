@@ -327,8 +327,11 @@ export function createSupabaseApi(config: SupabaseConfig): SupabaseApiClient {
       await fn('register-device', { apns_token: apnsToken });
     },
     exportData: () => fn<unknown>('export-data'),
-    async deleteAccount(): Promise<void> {
-      await fn('delete-account');
+    async deleteAccount(appleAuthorizationCode: string): Promise<void> {
+      if (!appleAuthorizationCode) {
+        throw new ApiError('invalid_argument', 'Apple authorization code is required', 400);
+      }
+      await fn('delete-account', { apple_authorization_code: appleAuthorizationCode });
       // The auth user is gone server-side. Clear the Keychain session on this device only
       // (a global sign-out would call a server that no longer knows the user).
       await client.auth.signOut({ scope: 'local' });

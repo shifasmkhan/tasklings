@@ -12,6 +12,7 @@ describe('settings logic', () => {
   it('words data errors from the code, never from the server message', () => {
     expect(dataErrorMessage(new ApiError('unauthenticated', 'secret server text'))).toBe("Sign in with Apple isn't set up yet.");
     expect(dataErrorMessage(new ApiError('reauth_required', 'x'))).toMatch(/sign in with Apple again/);
+    expect(dataErrorMessage(new ApiError('apple_code_invalid', 'x'))).toBe('Sign in with Apple again to delete your account.');
     expect(dataErrorMessage(new ApiError('network_error', 'x'))).toMatch(/reach the server/);
     expect(dataErrorMessage(new ApiError('canceled', 'x'))).toBeNull();
     expect(dataErrorMessage(new ApiError('weird', 'secret server text'))).not.toContain('secret');

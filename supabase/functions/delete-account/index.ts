@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { type AdminStore, createHandler, type RevocationResult } from "./handler.ts";
+import { type AdminStore, createHandler } from "./handler.ts";
 import { getUserFromAuth } from "../_shared/supabase.ts";
 import { logEvent } from "../_shared/log.ts";
+import { type AppleConfig, loadAppleConfig, revokeWithAuthorizationCode } from "../_shared/apple.ts";
 
 function env(name: string): string {
   const v = Deno.env.get(name);
@@ -15,12 +16,6 @@ function adminStore(): AdminStore {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   return {
-    async appleRefreshToken(userId) {
-      const { data, error } = await admin.from("apple_credentials").select("apple_refresh_token")
-        .eq("user_id", userId).maybeSingle();
-      if (error) throw new Error(`read apple credentials failed: ${error.code}`);
-      return data?.apple_refresh_token ?? null;
-    },
     async deleteUser(userId) {
       const { error } = await admin.auth.admin.deleteUser(userId);
       if (error) throw new Error(`delete user failed: ${error.status ?? "unknown"}`);
@@ -28,17 +23,18 @@ function adminStore(): AdminStore {
   };
 }
 
-// Phase 0 stub: revoking needs the Apple client secret (a JWT signed with the .p8 key) and the
-// token decryption key, neither of which exists yet. Until then the revocation is skipped and
-// logged as not_configured. Must be implemented before App Store submission (guideline 5.1.1(v)).
-function revokeApple(_ciphertext: string): Promise<RevocationResult> {
-  return Promise.resolve("not_configured");
-}
+// The imported key is cached for the life of the worker; the secrets are read when it starts.
+let appleConfig: Promise<AppleConfig | null> | undefined;
+const config = () =>
+  appleConfig ??= loadAppleConfig((n) => Deno.env.get(n)).catch((err) => {
+    appleConfig = undefined;
+    throw err;
+  });
 
 Deno.serve(createHandler({
   getUser: getUserFromAuth,
   admin: adminStore,
-  revokeApple,
+  revokeApple: (code) => revokeWithAuthorizationCode(code, { config, fetch, now: () => new Date() }),
   now: () => new Date(),
   log: logEvent,
 }));

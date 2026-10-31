@@ -62,7 +62,11 @@ async function renderSettings(opts: { dropped?: string[]; shared?: boolean } = {
   });
   for (let i = 0; i < titles.length; i += 1) await api.dropTask(`d${i + 1}`);
   const onAccountDeleted = jest.fn();
-  const credentialSource = jest.fn(async () => ({ identityToken: 'synthetic-token', rawNonce: 'synthetic-nonce' }));
+  const credentialSource = jest.fn(async () => ({
+    identityToken: 'synthetic-token',
+    rawNonce: 'synthetic-nonce',
+    authorizationCode: 'synthetic-code' as string | null,
+  }));
   const shareExport = jest.fn(async (_json: string) => opts.shared ?? true);
   await render(
     <ApiProvider client={api}>
@@ -239,7 +243,7 @@ describe('Settings (US-11)', () => {
         order.push('signIn');
         return { access_token: 'x', user_id: 'u', expires_at: 0 };
       });
-      jest.spyOn(api, 'deleteAccount').mockImplementation(async () => {
+      const del = jest.spyOn(api, 'deleteAccount').mockImplementation(async () => {
         order.push('delete');
       });
       await user().press(screen.getByRole('button', { name: 'Delete account' }));
@@ -248,6 +252,39 @@ describe('Settings (US-11)', () => {
       await user().press(buttons[buttons.length - 1]!);
       expect(credentialSource).toHaveBeenCalledTimes(1);
       expect(order).toEqual(['signIn', 'delete']);
+      // The code comes from the same credential, with no extra step for the person.
+      expect(del).toHaveBeenCalledWith('synthetic-code');
+      expect(onAccountDeleted).toHaveBeenCalledTimes(1);
+    });
+
+    it('without an authorization code it says sign-in isn\'t set up and deletes nothing', async () => {
+      const { api, credentialSource, onAccountDeleted } = await renderSettings();
+      credentialSource.mockResolvedValueOnce({ identityToken: 't', rawNonce: 'n', authorizationCode: null });
+      const del = jest.spyOn(api, 'deleteAccount');
+      await user().press(screen.getByRole('button', { name: 'Delete account' }));
+      const buttons = screen.getAllByRole('button', { name: 'Delete account' });
+      await user().press(buttons[buttons.length - 1]!);
+      expect(await screen.findByText("Sign in with Apple isn't set up yet.")).toBeOnTheScreen();
+      expect(del).not.toHaveBeenCalled();
+      expect(onAccountDeleted).not.toHaveBeenCalled();
+    });
+
+    it('apple_code_invalid asks to sign in again, keeps the account, and a retry can succeed', async () => {
+      const { api, credentialSource, onAccountDeleted } = await renderSettings();
+      const del = jest
+        .spyOn(api, 'deleteAccount')
+        .mockRejectedValueOnce(new ApiError('apple_code_invalid', 'Sign in with Apple again', 400));
+      await user().press(screen.getByRole('button', { name: 'Delete account' }));
+      let buttons = screen.getAllByRole('button', { name: 'Delete account' });
+      await user().press(buttons[buttons.length - 1]!);
+      expect(await screen.findByText('Sign in with Apple again to delete your account.')).toBeOnTheScreen();
+      expect(onAccountDeleted).not.toHaveBeenCalled();
+
+      credentialSource.mockResolvedValueOnce({ identityToken: 't2', rawNonce: 'n2', authorizationCode: 'fresh-code' });
+      await user().press(screen.getByRole('button', { name: 'Delete account' }));
+      buttons = screen.getAllByRole('button', { name: 'Delete account' });
+      await user().press(buttons[buttons.length - 1]!);
+      expect(del).toHaveBeenLastCalledWith('fresh-code');
       expect(onAccountDeleted).toHaveBeenCalledTimes(1);
     });
 
