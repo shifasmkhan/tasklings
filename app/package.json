@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@bacons/apple-targets": "5.0.0",
-    "@react-native-community/datetimepicker": "9.2.1",
+    "@react-native-community/datetimepicker": "9.2.2",
     "@supabase/supabase-js": "2.118.0",
     "expo": "58.0.16",
     "expo-clipboard": "58.0.3",
