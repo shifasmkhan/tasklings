@@ -9,7 +9,7 @@ Rules from the security review: edge functions query Postgres with the caller's 
 | Path | What |
 |---|---|
 | `config.toml` | Local/CI Supabase config. Only `public` is exposed through the API. |
-| `migrations/` | Schema (`0100`), contract additions approved 2026-10-27 (`0200`: `last_rollover_on`, `undo_planned_for`, `needs_review`), task RPCs (`0300`), rollover job (`0400`), realtime (`0500`), process-capture support (`0600`: `needs_review` insert grant, extraction limits and counters, stuck-capture sweeper), `undo_capture` and the guarded task delete (`0700`), realtime narrowed to `captures` only (`0800`), `apple_credentials` dropped (`20261030000100`, TM-02). |
+| `migrations/` | Schema (`0100`), contract additions approved 2026-10-27 (`0200`: `last_rollover_on`, `undo_planned_for`, `needs_review`), task RPCs (`0300`), rollover job (`0400`), realtime (`0500`), process-capture support (`0600`: `needs_review` insert grant, extraction limits and counters, stuck-capture sweeper), `undo_capture` and the guarded task delete (`0700`), realtime narrowed to `captures` only (`0800`), `apple_credentials` dropped (`20261030000100`, TM-02), private realtime channels policy (`20261119000100`, TM-05). |
 | `tests/database/` | pgTAP: RLS and privileges, every RPC as the owner and as another user, rollover with time-zone changes, `needs_review`, `undo_capture`. |
 | `functions/` | Deno edge functions: `process-capture`, `register-device`, `export-data`, `delete-account`, shared code in `_shared/` (including `apple.ts`), tests in `tests/`. `process-capture` imports the extraction module from `ai/src/extraction` (see below). |
 | `seed.sql` | Synthetic local data (two `example.test` users). |
@@ -147,6 +147,62 @@ Nothing about transcripts, prompts, model output or task titles is logged: logs 
 ### Stuck captures
 
 `private.fail_stuck_captures()` runs every 5 minutes from pg_cron. It marks captures that have been `parsing` for more than 5 minutes (`status_changed_at`) as `failed` with `error = 'extraction_timeout'`, so the app can retry them with the same `capture_id`. `captures.error` codes written by this function: `extraction_failed`, `tasks_insert_failed`, `extraction_timeout`.
+
+## Hosted project setup (proof of concept)
+
+The steps for the owner's own hosted project, in order. Nothing here is a secret except where marked, and none of it goes in the repo.
+
+1. **Create the project** in the Supabase dashboard (any region; note the project ref, the 20-letter id in the URL).
+2. **Link and push the schema.**
+
+   ```sh
+   cd supabase
+   npm ci
+   npx supabase login
+   npx supabase link --project-ref <ref>
+   npx supabase db push --dry-run     # lists the migrations that would run
+   npx supabase db push
+   ```
+
+   Do not pass `--include-seed`: `seed.sql` is synthetic local data and must never reach the hosted project. The realtime migration (`20261119000100`) creates the private-channel policy only if `realtime.messages` exists, which it does on a hosted project.
+3. **Deploy the edge functions.** `--use-api` bundles on Supabase's servers, so no Docker is needed (the shared `ai/` import is picked up; see "Importing the extraction module"). `verify_jwt = true` comes from `config.toml`.
+
+   ```sh
+   npx supabase functions deploy --use-api --project-ref <ref>
+   ```
+4. **Set the function secrets** from a file that only you can read, so the key never lands in shell history or the process list, then delete the file.
+
+   ```sh
+   umask 077
+   f=$(mktemp)                          # mktemp creates it with mode 600
+   chmod 600 "$f"
+   printf 'ANTHROPIC_API_KEY=%s\n' "<your key>" > "$f"      # type it in your editor instead if you prefer
+   npx supabase secrets set --env-file "$f" --project-ref <ref>
+   shred -u "$f" 2>/dev/null || rm -f "$f"
+   npx supabase secrets list --project-ref <ref>              # names only
+   ```
+
+   Apple secrets (`APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`) wait for the Apple membership; delete-account then deletes the account without revoking (see the failure policy below).
+5. **Auth settings** (Dashboard, Authentication). This project has no Apple provider yet, and the owner signs in with an email code (TM-10):
+   - Sign In / Providers, **Email: on**, **Allow new users to sign up: off**, **Confirm email: on**. Anonymous sign-ins: off. Phone: off. Apple: off until US-10. Manual linking: off.
+   - Email OTP length **6** (the app only accepts 6 digits). Set the OTP expiry short, 10 minutes or less.
+   - Authentication, Emails, Templates: **Magic Link** is the email `signInWithOtp` sends to an existing user. It must contain `{{ .Token }}` (the code); the default template has only a link. Add a line such as `Your code is {{ .Token }}`.
+   - Sessions: refresh-token rotation on, reuse interval 10 s, access-token lifetime 3600 s.
+   - Supabase's built-in email sender is rate-limited to a few messages an hour. Enough for one owner; if codes stop arriving, wait, or add your own SMTP provider.
+6. **Create the owner user**: Authentication, Users, **Add user**, **Create new user**, your email, tick **Auto Confirm User**. Because sign-ups are off, this is the only way an account exists; `shouldCreateUser: false` in the app means a code can never create one either. The `handle_new_user` trigger creates the profile row.
+7. **Data API**: Project Settings, Data API, Exposed schemas: **`public` only** (not `private`, not `graphql_public` unless you use it).
+8. **Realtime, after the migration is deployed (step 2):** Project Settings, Realtime, **Allow public access: off**. Do it in this order: with the setting off and no policy, the app's channel join is refused; with the policy in place and the setting still on, nothing breaks. See "Realtime and private channels".
+9. **Point the app at it**: the project URL and anon key go into EAS environment variables, not the repo (`app/README.md`, "Live Simulator build").
+
+### Realtime and private channels (TM-05)
+
+The app subscribes to `capture:<capture_id>` as a **private** channel (`config.private = true`) after `realtime.setAuth()` gives the channel the signed-in user's token. Joining a private channel runs the SELECT policies on `realtime.messages` for the caller; this project has exactly one (`tasklings_capture_topic_select`, migration `20261119000100`), which calls `private.can_join_capture_topic(realtime.topic())`. That function allows the join only for a topic of the form `capture:<lowercase uuid>` where the uuid is a `captures` row whose `user_id` is the caller (`auth.uid()`). Anything else is refused: another user's capture, an unknown id, a malformed or differently-cased topic, no session. There is no INSERT policy, so clients can't broadcast.
+
+`postgres_changes` events are separate from that policy: Realtime still checks each event against the subscriber's own row-level security on `public.captures` (`captures_select_own`), per subscriber. The topic check is a second lock on the channel, not a replacement for table RLS. Only `captures` is in the publication (DELETE events are not filtered by RLS, which is why `tasks` is not; see `0800`).
+
+pgTAP covers the check as a function (owner, another user, malformed topics, no session; `08_realtime_private_channels.test.sql`) and, where the Realtime schema exists, that the policy is SELECT-only and calls it. CI starts only Postgres and Auth, so there the two policy assertions are skipped. What no automated test covers: an actual join against a hosted Realtime server with public access off, and that `postgres_changes` delivery works on a private channel with only this policy. Check both by hand on the first run (below).
+
+**First-run check after step 8:** sign in on the Simulator build, record a note, and see the tasks arrive within a few seconds. If they only appear after the 60-second "Couldn't sort your note" row and Try again, the join is being refused: in the dashboard's Realtime Inspector, join `capture:<id>` as the authenticated role and look for a policy error, and confirm migration `20261119000100` is applied (`select polname from pg_policy where polrelid = 'realtime.messages'::regclass;`). Turning "Allow public access" back on restores the old behavior while you debug.
 
 ## Secrets and settings the owner must set
 

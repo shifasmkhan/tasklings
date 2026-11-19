@@ -54,6 +54,9 @@ export interface Session {
   expires_at: number;
 }
 
+/** How the current session was made. `email` exists only in builds made with the dev sign-in flag. */
+export type SignInMethod = 'apple' | 'email';
+
 /** captures.source. Voice notes are `voice`, typed notes `text`; `siri` and `widget` come with the native targets. */
 export type CaptureSource = 'voice' | 'text' | 'siri' | 'widget';
 
@@ -117,6 +120,17 @@ export interface ApiClient {
    * SHA-256 hex was sent to Apple (see lib/nonce.ts); Supabase checks it against the token.
    */
   signInWithApple(identityToken: string, rawNonce: string): Promise<Session>;
+  /**
+   * Owner-only dev sign-in (interim PoC, TM-10): asks Supabase Auth to email a one-time code to an
+   * existing user (`shouldCreateUser: false`). Exists only in builds made with
+   * EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1; otherwise rejects with `unavailable` without any request.
+   * Rejects with `code_request_failed` (the reason is never revealed) or `network_error`.
+   */
+  requestEmailCode(email: string): Promise<void>;
+  /** Dev sign-in, second step: exchanges the 6-digit code for a session. Same `unavailable` rule. Rejects with `code_invalid` or `network_error`. */
+  verifyEmailCode(email: string, code: string): Promise<Session>;
+  /** How the current session was made, or null when signed out. Export and delete need `apple`. */
+  signInMethod(): Promise<SignInMethod | null>;
   /** process-capture edge function: 202 {capture_id}; tasks arrive by realtime. */
   processCapture(request: ProcessCaptureRequest): Promise<ProcessCaptureResponse>;
   /** today_tasks() RPC. */

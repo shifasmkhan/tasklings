@@ -1,4 +1,5 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useEffect } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -6,9 +7,11 @@ import type { Task } from '@/api/types';
 import { UndoToast } from '@/features/today/parts';
 import { MIN_TOUCH, usePalette, type Palette } from '@/theme/colors';
 import appConfig from '../../../app.json';
+import { isDevSignInEnabled } from '@/api/devSignIn';
+import { DEV_SIGNIN_LINK } from '@/features/auth/DevSignInForm';
 import { defaultAppleCredentialSource, type AppleCredentialSource } from '@/features/auth/appleCredential';
 import { shareExportFile, type ExportSharer } from './exportShare';
-import { clockToDate, dateToClock, DELETE_COPY, EMPTY_DROPPED_TEXT, TIMES_FOOTNOTE, type TimeKind } from './logic';
+import { APPLE_ONLY_COPY, clockToDate, dateToClock, DELETE_COPY, EMPTY_DROPPED_TEXT, TIMES_FOOTNOTE, type TimeKind } from './logic';
 import { useSettings } from './useSettings';
 
 interface Props {
@@ -17,6 +20,10 @@ interface Props {
   /** Test seams; the app uses the defaults. */
   credentialSource?: AppleCredentialSource;
   shareExport?: ExportSharer;
+  /** Opens the owner-only dev sign-in screen. Offered only when the build has the flag and nobody is signed in. */
+  onOpenDevSignIn?: () => void;
+  /** Bumped by the route when Settings regains focus (for example after the dev sign-in screen closed). */
+  focusKey?: number;
 }
 
 const TIME_LABELS: Record<TimeKind, string> = {
@@ -28,11 +35,20 @@ export function SettingsScreen({
   onAccountDeleted,
   credentialSource = defaultAppleCredentialSource,
   shareExport = shareExportFile,
+  onOpenDevSignIn,
+  focusKey = 0,
 }: Props) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const s = useSettings({ credentialSource, shareExport, onAccountDeleted });
   const busy = s.working !== null;
+  const { reloadAll } = s;
+  useEffect(() => {
+    if (focusKey > 0) reloadAll();
+  }, [focusKey, reloadAll]);
+  // Owner-only dev sign-in (TM-10): an email-code session can't do the Apple-only actions.
+  const emailSession = s.signInMethod === 'email';
+  const showDevSignIn = isDevSignInEnabled() && s.signInMethod === null && onOpenDevSignIn !== undefined;
 
   return (
     <View style={[styles.screen, { backgroundColor: p.background }]}>
@@ -103,16 +119,24 @@ export function SettingsScreen({
           </View>
         </Section>
 
+        {showDevSignIn ? (
+          <Section palette={p} title="Account">
+            <View style={[styles.card, { backgroundColor: p.card }]}>
+              <TextButton palette={p} label={DEV_SIGNIN_LINK} onPress={() => onOpenDevSignIn?.()} />
+            </View>
+          </Section>
+        ) : null}
+
         <Section palette={p} title="Your data">
           <View style={[styles.card, styles.gap12, { backgroundColor: p.card }]}>
             <Text style={[styles.body, { color: p.secondaryText }]}>
-              Exporting or deleting needs a fresh Sign in with Apple first.
+              {emailSession ? APPLE_ONLY_COPY : 'Exporting or deleting needs a fresh Sign in with Apple first.'}
             </Text>
             <ActionButton
               palette={p}
               label="Export my data"
               kind="plain"
-              disabled={busy}
+              disabled={busy || emailSession}
               working={s.working === 'export'}
               onPress={() => void s.exportMyData()}
             />
@@ -120,7 +144,7 @@ export function SettingsScreen({
               palette={p}
               label="Delete account"
               kind="destructive"
-              disabled={busy}
+              disabled={busy || emailSession}
               working={s.working === 'delete'}
               onPress={s.askDelete}
             />

@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useApi } from '@/api/ApiProvider';
 import { ApiError } from '@/api/errors';
-import type { Profile, Task } from '@/api/types';
+import type { Profile, SignInMethod, Task } from '@/api/types';
 import { logEvent } from '@/lib/log';
 import { useScreenReaderRef } from '@/lib/useScreenReader';
 import { undoWindowMs, type Toast } from '@/features/today/useToday';
 import type { AppleCredential, AppleCredentialSource } from '@/features/auth/appleCredential';
 import type { ExportSharer } from './exportShare';
 import {
+  APPLE_ONLY_COPY,
   codeOf,
   dataErrorMessage,
   EXPORT_DONE,
@@ -49,6 +50,9 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
   const [droppedState, setDroppedState] = useState<LoadState>('loading');
   const [dropped, setDropped] = useState<Task[]>([]);
   const [restoring, setRestoring] = useState<ReadonlySet<string>>(new Set());
+
+  // How the session was made: null when signed out. Undefined until it is read.
+  const [method, setMethod] = useState<SignInMethod | null | undefined>(undefined);
 
   const [toast, setToast] = useState<Toast | null>(null);
   const toastKey = useRef(0);
@@ -106,6 +110,27 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
     [api],
   );
 
+  const fetchMethod = useCallback(
+    () =>
+      api.signInMethod().then(
+        (m) => {
+          if (mounted.current) setMethod(m);
+        },
+        () => {
+          // Unknown: keep the Apple path; the server still decides.
+          if (mounted.current) setMethod(undefined);
+        },
+      ),
+    [api],
+  );
+
+  /** Reloads everything that depends on who is signed in (after the dev sign-in screen closes). */
+  const reloadAll = useCallback(() => {
+    void fetchMethod();
+    void fetchProfile();
+    void fetchDropped();
+  }, [fetchMethod, fetchProfile, fetchDropped]);
+
   const reloadProfile = useCallback(() => {
     setProfileState('loading');
     return fetchProfile();
@@ -119,11 +144,12 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
     mounted.current = true;
     void fetchProfile();
     void fetchDropped();
+    void fetchMethod();
     return () => {
       mounted.current = false;
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
-  }, [fetchProfile, fetchDropped]);
+  }, [fetchProfile, fetchDropped, fetchMethod]);
 
   const flushTimes = useCallback(async () => {
     if (saving.current) return;
@@ -209,17 +235,26 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
       setDataError(null);
       setDataMessage(null);
       try {
+        // An email-code session (owner-only dev sign-in) is not Sign in with Apple, and starting the
+        // Apple flow here would replace it with a different account. Say so and stop.
+        if ((await api.signInMethod()) === 'email') {
+          if (mounted.current) {
+            setMethod('email');
+            setDataError(APPLE_ONLY_COPY);
+          }
+          return;
+        }
         const credential = await credentialSource();
         await api.signInWithApple(credential.identityToken, credential.rawNonce);
         await run(credential);
       } catch (err) {
         logEvent(`settings.${action}_failed`, { code: codeOf(err) });
-        if (mounted.current) setDataError(dataErrorMessage(err));
+        if (mounted.current) setDataError(codeOf(err) === 'reauth_required' && method === 'email' ? APPLE_ONLY_COPY : dataErrorMessage(err));
       } finally {
         if (mounted.current) setWorking(null);
       }
     },
-    [api, credentialSource, working],
+    [api, credentialSource, method, working],
   );
 
   const exportMyData = useCallback(
@@ -254,6 +289,8 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
   }, [api, onAccountDeleted, withFreshSignIn]);
 
   return {
+    signInMethod: method,
+    reloadAll,
     profileState,
     profile,
     timeError,

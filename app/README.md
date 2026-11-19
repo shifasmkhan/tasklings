@@ -13,7 +13,12 @@ npx expo start        # then press i for the iOS Simulator (macOS)
 
 ### Simulator build without local CocoaPods (EAS)
 
-`eas.json` has one profile, `simulator`: an unsigned iOS Simulator build made on Expo's servers, so no Apple account, CocoaPods or Ruby is needed locally. It uses the mock backend: `.env.local` is git-ignored, so EAS doesn't upload it. Don't add `EXPO_PUBLIC_SUPABASE_*` variables to this profile or as EAS environment variables until US-10.
+`eas.json` has two profiles, both unsigned iOS Simulator builds made on Expo's servers, so no Apple account, CocoaPods or Ruby is needed locally:
+
+| Profile | Backend | Notes |
+| --- | --- | --- |
+| `simulator` | Mock (synthetic tasks) | Resolves to EAS's `preview` environment. `.env.local` is git-ignored, so EAS doesn't upload it. Don't put `EXPO_PUBLIC_SUPABASE_*` or the dev sign-in flag in the `preview` environment. |
+| `simulator-live` | The hosted Supabase project | `"environment": "development"`: the URL, anon key and dev sign-in flag come from the EAS `development` environment (see "Live Simulator build"). |
 
 ```sh
 cd app
@@ -45,6 +50,7 @@ npm run test:ci
 | `src/features/today/` | Today screen (US-04), the Start here rule and grouping logic, undo (US-09) |
 | `src/features/task/` | Task detail (US-05): inline editing with autosave, script card, "Found for you", Done / Tomorrow / Drop with undo |
 | `src/features/settings/` | Settings (US-11) and Recently dropped (US-09): times, restore, export and delete, with the Apple re-sign-in seam and the share-sheet export |
+| `src/features/auth/` | `appleCredential.ts` (the Sign in with Apple seam) and the owner-only email-code sign-in (`DevSignInForm`, `DevSignInScreen`; `src/api/devSignIn.ts` holds the build flag), TM-10 |
 | `src/features/onboarding/` | First-run onboarding (US-19): flow, first-run flag, notification permission interface; sign-in uses the shared `features/auth/appleCredential.ts` |
 | `src/features/checkin/` | Evening check-in (US-07, US-12): card stack, still-need-this cards, drop reasons, summary |
 | `src/theme/` | Light and dark palettes; contrast is tested |
@@ -161,12 +167,42 @@ The app uses the mock **unless both** variables below are set to non-empty value
 
 **Both are public by design.** Expo inlines `EXPO_PUBLIC_*` variables into the JavaScript bundle at build time, so they ship in every copy of the app; the anon key only identifies the project, and row-level security plus the user session do the protecting. `.env.example` holds placeholders only; `.env.local` is git-ignored. The service-role key must never go here: the client refuses a service-role JWT or an `sb_secret_` key (`invalid_config`). If one variable is set and the URL is invalid, the app fails at startup instead of silently falling back to the mock.
 
-- **No sign-in yet.** Sign in with Apple is US-10. Until it lands the live client has no session, so every call except `signInWithApple` fails at once with `unauthenticated` (HTTP 401 semantics) without sending a request. The anon key is never used as a bearer token. To exercise the live client before US-10, sign in from a dev script against a local project; there is no UI for it.
+- **Sign-in.** Sign in with Apple is US-10. Until it lands, a live client with no session fails every call except the sign-in methods at once with `unauthenticated` (HTTP 401 semantics) without sending a request; the anon key is never used as a bearer token. The only way to get a session before US-10 is the owner-only email-code sign-in of the `simulator-live` build ("Live Simulator build" below).
 - **Session storage (security review S-12).** The Supabase session (access and refresh tokens) is stored only in the iOS Keychain through `expo-secure-store`, with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`: readable only while the device is unlocked, not synced to iCloud, not restored onto another device. A session is longer than SecureStore's 2048 bytes per value, so `secureSessionStorage.ts` splits it into 512-character chunks. AsyncStorage is never used; ESLint rejects importing it.
 - **Client.** `@supabase/supabase-js` (pinned) covers everything: `rpc()` for `today_tasks`, the task RPCs and `undo_capture`; `from('tasks').update()` for task edits; `functions.invoke()` for the edge functions; realtime for `CaptureArrivals`. `react-native-url-polyfill` is imported by `supabase.ts` because supabase-js builds URLs with `URL.searchParams`, which React Native's built-in `URL` only approximates. Token refresh runs only while the app is active.
 - **Errors.** PostgREST errors map to the standard `{code, message}` shape (stable code from `hint`, see `supabase/README.md`), edge-function errors come through unchanged, a request that never got an answer is `network_error`, and server text for platform errors is never passed on.
-- **Realtime.** `CaptureArrivals` subscribes to the user's own `captures` row (`id=eq.<capture_id>`). When its status becomes `done` it reads the capture's tasks and delivers them once; on every channel (re)join it also reads the status once, so a result that finished while the connection was down is not missed. A `failed` capture is not delivered: the existing 60-second timeout offers Try again. Row-level security applies to realtime, so another user's capture id produces no events. This needs the `captures` table in the `supabase_realtime` publication (migration `20261027000700`).
+- **Realtime.** `CaptureArrivals` joins a **private** channel `capture:<capture_id>` (`config: { private: true }`) after `await client.realtime.setAuth()` (no argument: supabase-js's access-token callback hands realtime the session's JWT, and re-sends it on refresh), and listens to the user's own `captures` row (`id=eq.<capture_id>`). The hosted project has "Allow public access" off (TM-05), and joining needs the `realtime.messages` policy from migration `20261119000100` (`supabase/README.md`, "Realtime and private channels"). When its status becomes `done` it reads the capture's tasks and delivers them once; on every channel (re)join it also reads the status once, so a result that finished while the connection was down is not missed. A `failed` capture is not delivered: the existing 60-second timeout offers Try again. Row-level security still applies to the events (the table's `captures_select_own`, per subscriber), and the join policy refuses another user's capture topic, so another user's capture id produces nothing. This needs the `captures` table in the `supabase_realtime` publication (migration `20261027000700`).
 - **Not covered by automated tests:** a real round trip against a Supabase project (realtime in particular). Tests use a fake `fetch` and a fake realtime channel.
+
+### Live Simulator build (proof of concept, before the Apple membership)
+
+PM decision 2026-11-19: run the app against the hosted Supabase project before buying the Apple membership. There is no Sign in with Apple yet, so builds made with the flag `EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1` have an owner-only email-code sign-in (TM-10). The flag is a build-time switch, not `__DEV__`, because the EAS Simulator build is a Release build.
+
+**Owner steps** (the hosted project must already be set up and have your user: `supabase/README.md`, "Hosted project setup"):
+
+1. Create the three variables in EAS's `development` environment. All three are public by design (the URL and anon key identify the project, and the flag is not a secret): they end up inlined in the JavaScript bundle. Use `plaintext` for the URL and the flag; `sensitive` for the anon key is fine too (it only hides the value in the dashboard and CLI output). **Never** put the service-role key or any `sb_secret_` key here; the client refuses them.
+
+   ```sh
+   cd app
+   npx eas-cli@latest env:set --environment development --name EXPO_PUBLIC_SUPABASE_URL --value "https://<ref>.supabase.co" --visibility plaintext
+   npx eas-cli@latest env:set --environment development --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "<anon key>" --visibility sensitive
+   npx eas-cli@latest env:set --environment development --name EXPO_PUBLIC_ENABLE_DEV_SIGNIN --value 1 --visibility plaintext
+   npx eas-cli@latest env:list --environment development     # check the names
+   ```
+
+   The older `eas env:create` still works in some versions but is hidden and deprecated in eas-cli 27 (`env:set` replaces it, and creates or updates). Run either without `--value`/`--visibility` for prompts.
+2. Build and install:
+
+   ```sh
+   npx eas-cli@latest build -p ios --profile simulator-live
+   ```
+3. Open the app, go through onboarding, and on the Sign in step tap **Developer sign-in (email code)** under the Apple button. Enter your email, tap **Send code**, read the 6-digit code from your mailbox, enter it and tap **Sign in**. Send stays off for 60 seconds after each send. Errors say only "Couldn't send a code" or "That code didn't work". Later, when signed out, the same link is in Settings.
+
+**What the flag does.** With it absent (every other build, including `simulator`), the screen is not registered in the navigator, the onboarding link and the Settings entry don't render, and `requestEmailCode` / `verifyEmailCode` reject with `unavailable` before any request. `src/__tests__/easConfig.test.ts` fails if any `eas.json` profile other than `simulator-live` sets the flag, resolves to the `development` environment (including `developmentClient: true`) or extends `simulator-live`, if `simulator-live` is not `distribution: internal` with `ios.simulator: true` and `environment: development`, or if any profile carries a Supabase value. Because of the `development` environment, **don't add a dev-client or other profile that uses it** without removing the flag from that environment first.
+
+**Export and delete stay Apple-only.** An email session isn't a fresh Sign in with Apple, so the server answers `reauth_required` and Settings says "Export and delete need Sign in with Apple (coming soon)." and disables both buttons (the session's provider is read from the Supabase session; the Apple sheet is never started for an email session, since it would replace the account).
+
+The mock backend accepts any email and the code `000000` when the flag is set (`EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1 npx expo start`).
 
 ## Rules for this folder
 

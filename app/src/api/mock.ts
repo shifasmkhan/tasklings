@@ -1,4 +1,5 @@
 import type { CaptureArrival, CaptureArrivals } from './arrivals';
+import { assertDevSignInEnabled, isSixDigitCode, normalizeEmail } from './devSignIn';
 import { ApiError } from './errors';
 import { assertClockTime } from './clockTime';
 import { makeTask, mockEnrichments, MOCK_SEED_CAPTURE_ID, MOCK_SEED_TRANSCRIPT, MOCK_USER_ID, seedTasks } from './fixtures';
@@ -14,6 +15,7 @@ import type {
   Profile,
   ProfileTimesInput,
   Session,
+  SignInMethod,
   Task,
   TaskDetail,
   TaskEdit,
@@ -21,6 +23,9 @@ import type {
 } from './types';
 import { TASK_EDITABLE_FIELDS } from './types';
 import { addDays, deviceTimeZone, localIsoDate } from '@/lib/dates';
+
+/** The one-time code the mock accepts in the dev sign-in. */
+export const MOCK_EMAIL_CODE = '000000';
 
 export interface MockApiOptions {
   /** Starting tasks. Defaults to the synthetic seed set. */
@@ -101,6 +106,13 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
   ]);
 
   for (const t of options.tasks ?? seedTasks(today())) tasks.set(t.id, { ...t });
+
+  // The mock starts signed in with Apple, as it always has. Email sessions exist only with the dev flag.
+  let signInMethod: SignInMethod | null = 'apple';
+  /** Like the server: export and delete need a fresh Sign in with Apple, which an email session isn't. */
+  function requireApple(): void {
+    if (signInMethod === 'email') throw new ApiError('reauth_required', 'Sign in with Apple again', 403);
+  }
 
   async function call<T>(fn: () => T): Promise<T> {
     if (latency > 0) await new Promise((r) => setTimeout(r, latency));
@@ -199,10 +211,35 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
       return [...tasks.values()].map((t) => ({ ...t }));
     },
 
+    async requestEmailCode(email: string): Promise<void> {
+      assertDevSignInEnabled();
+      return call(() => {
+        normalizeEmail(email);
+      });
+    },
+
+    async verifyEmailCode(email: string, code: string): Promise<Session> {
+      assertDevSignInEnabled();
+      return call(() => {
+        normalizeEmail(email);
+        // The mock accepts any email and exactly this code.
+        if (!isSixDigitCode(code) || code !== MOCK_EMAIL_CODE) throw new ApiError('code_invalid', 'Wrong code', 401);
+        signInMethod = 'email';
+        return {
+          access_token: 'mock-session',
+          user_id: MOCK_USER_ID,
+          expires_at: Math.floor(now().getTime() / 1000) + 3600,
+        };
+      });
+    },
+
+    signInMethod: () => call(() => signInMethod),
+
     signInWithApple(identityToken: string, rawNonce: string): Promise<Session> {
       return call(() => {
         if (!identityToken) throw new ApiError('unauthenticated', 'Missing identity token', 401);
         if (!rawNonce) throw new ApiError('invalid_argument', 'Missing nonce', 400);
+        signInMethod = 'apple';
         return {
           access_token: 'mock-session',
           user_id: MOCK_USER_ID,
@@ -386,12 +423,16 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
     },
 
     exportData(): Promise<unknown> {
-      return call(() => ({ tasks: [...tasks.values()].map((t) => ({ ...t })) }));
+      return call(() => {
+        requireApple();
+        return { tasks: [...tasks.values()].map((t) => ({ ...t })) };
+      });
     },
 
     deleteAccount(appleAuthorizationCode: string): Promise<void> {
       // The mock's stand-in for "back to a fresh install": no tasks, default profile.
       return call(() => {
+        requireApple();
         if (!appleAuthorizationCode) {
           throw new ApiError('invalid_argument', 'Apple authorization code is required', 400);
         }
