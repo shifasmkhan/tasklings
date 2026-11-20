@@ -12,6 +12,9 @@ export const RESTORED_MESSAGE = 'Restored. It’s back on Today.';
 export const DELETE_COPY = 'This deletes your account, all tasks and notes. It can’t be undone.';
 export const EXPORT_DONE = 'Your data is ready to save or share.';
 
+/** Shown instead of starting Sign in with Apple when the session is the owner-only email-code one. */
+export const APPLE_ONLY_COPY = 'Export and delete need Sign in with Apple (coming soon).';
+
 export type TimeKind = 'briefTime' | 'checkinTime';
 
 /** "HH:MM" to a Date today at that clock time, for the native picker. */
@@ -44,6 +47,7 @@ export function dataErrorMessage(err: unknown): string | null {
     case 'apple_code_invalid':
       return 'Sign in with Apple again to delete your account.';
     case 'reauth_required':
+      // Also what the server says to an email-code session, which can never be fresh Apple.
       return 'For your security, sign in with Apple again, then try once more.';
     case 'network_error':
       return "Couldn't reach the server. Check your connection and try again.";

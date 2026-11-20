@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/ApiProvider';
+import { isDevSignInEnabled } from '@/api/devSignIn';
 import { IntentLaunchHandler } from '@/features/capture/IntentLaunchHandler';
 import { CaptureProvider } from '@/features/capture/CaptureProvider';
 import { OnboardingProvider } from '@/features/onboarding/OnboardingProvider';
@@ -34,6 +35,8 @@ export default function RootLayout() {
                 <Stack.Screen name="capture" options={{ presentation: 'formSheet', title: 'Capture', headerShown: false }} />
                 <Stack.Screen name="task/[id]" options={{ title: 'Task' }} />
                 <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+                {/* Owner-only dev sign-in (TM-10): registered only in builds made with the flag. */}
+                {isDevSignInEnabled() ? <Stack.Screen name="dev-signin" options={{ title: 'Developer sign-in' }} /> : null}
                 <Stack.Screen name="check-in" options={{ presentation: 'modal', title: 'Evening check-in' }} />
               </Stack>
             </ThemeProvider>

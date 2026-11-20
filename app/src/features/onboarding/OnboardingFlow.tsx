@@ -3,10 +3,12 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApi } from '@/api/ApiProvider';
+import { isDevSignInEnabled } from '@/api/devSignIn';
 import { isApiError } from '@/api/errors';
 import { useOptionalCaptureStore } from '@/features/capture/CaptureProvider';
 import { logEvent } from '@/lib/log';
 import { usePalette } from '@/theme/colors';
+import { DevSignInForm, DEV_SIGNIN_LINK } from '@/features/auth/DevSignInForm';
 import { defaultAppleCredentialSource, type AppleCredentialSource } from '@/features/auth/appleCredential';
 import { createNotificationPermission, type NotificationPermission } from './notifications';
 import { useOnboardingGate } from './OnboardingProvider';
@@ -70,6 +72,8 @@ export function OnboardingFlow({
 
   const [step, setStep] = useState<Step>('welcome');
   const [busy, setBusy] = useState(false);
+  // Owner-only dev sign-in (TM-10): the link and the form exist only in builds made with the flag.
+  const [devSignIn, setDevSignIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [brief, setBrief] = useState(DEFAULT_BRIEF_TIME);
   const [checkin, setCheckin] = useState(DEFAULT_CHECKIN_TIME);
@@ -167,6 +171,18 @@ export function OnboardingFlow({
           </StepFrame>
         );
       case 'signin':
+        if (devSignIn && isDevSignInEnabled()) {
+          return (
+            <StepFrame
+              step={2}
+              total={TOTAL}
+              title="Developer sign-in"
+              footer={<TextButton label="Back" onPress={() => setDevSignIn(false)} />}
+            >
+              <DevSignInForm onSignedIn={() => go('times')} />
+            </StepFrame>
+          );
+        }
         return (
           <StepFrame
             step={2}
@@ -176,6 +192,15 @@ export function OnboardingFlow({
               <>
                 {error ? <ErrorText>{error}</ErrorText> : null}
                 <AppleSignInButton onPress={() => void signIn()} disabled={busy} />
+                {isDevSignInEnabled() ? (
+                  <TextButton
+                    label={DEV_SIGNIN_LINK}
+                    onPress={() => {
+                      setError(null);
+                      setDevSignIn(true);
+                    }}
+                  />
+                ) : null}
               </>
             }
           />

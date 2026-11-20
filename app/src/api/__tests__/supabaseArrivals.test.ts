@@ -20,6 +20,9 @@ function fakeClient(opts: { captureStatus?: string; tasksError?: boolean } = {})
   let statusCallback: ((s: Status) => void) | null = null;
   const removed: unknown[] = [];
   const channelNames: string[] = [];
+  const channelOptions: unknown[] = [];
+  const events: string[] = [];
+  const setAuthCalls: unknown[][] = [];
 
   const channel = {
     on: (_type: string, filter: Record<string, unknown>, cb: (p: { new?: unknown }) => void) => {
@@ -33,7 +36,13 @@ function fakeClient(opts: { captureStatus?: string; tasksError?: boolean } = {})
     },
   };
   const client = {
-    channel: (name: string) => (channelNames.push(name), channel),
+    realtime: {
+      setAuth: async (...args: unknown[]) => {
+        events.push('setAuth');
+        setAuthCalls.push(args);
+      },
+    },
+    channel: (name: string, opts?: unknown) => (events.push('channel'), channelNames.push(name), channelOptions.push(opts), channel),
     removeChannel: async (ch: unknown) => (removed.push(ch), 'ok'),
     from: (table: string) => {
       const q: (typeof queries)[number] = { table };
@@ -63,6 +72,9 @@ function fakeClient(opts: { captureStatus?: string; tasksError?: boolean } = {})
     removed,
     channel,
     channelNames,
+    channelOptions,
+    events,
+    setAuthCalls,
     emitCapture: (status: string) => handlers.forEach((h) => h({ new: { status } })),
     setStatus: (s: Status) => statusCallback?.(s),
   };
@@ -70,18 +82,52 @@ function fakeClient(opts: { captureStatus?: string; tasksError?: boolean } = {})
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
+/** Subscribes and waits for the channel to be created (it is, once realtime has the session token). */
+async function open(f: ReturnType<typeof fakeClient>, listener: (a: CaptureArrival) => void) {
+  const unsubscribe = createSupabaseArrivals(f.client).subscribe(ID, listener);
+  await flush();
+  return unsubscribe;
+}
+
 describe('realtime capture arrivals', () => {
-  it('subscribes to the capture row only, filtered by its id', () => {
+  it('subscribes to the capture row only, filtered by its id', async () => {
     const f = fakeClient();
-    createSupabaseArrivals(f.client).subscribe(ID, () => {});
-    expect(f.channelNames).toEqual([`capture-${ID}`]);
+    await open(f, () => {});
+    expect(f.channelNames).toEqual([`capture:${ID}`]);
     expect(f.filters).toEqual([{ event: '*', schema: 'public', table: 'captures', filter: `id=eq.${ID}` }]);
+  });
+
+  it('uses a private channel and gives realtime the session token before creating it', async () => {
+    const f = fakeClient();
+    await open(f, () => {});
+    expect(f.channelOptions).toEqual([{ config: { private: true } }]);
+    // No explicit token: setAuth() with no argument uses the signed-in session's access token.
+    expect(f.setAuthCalls).toEqual([[]]);
+    expect(f.events).toEqual(['setAuth', 'channel']);
+  });
+
+  it('puts the lowercase id in the topic and filter', async () => {
+    const f = fakeClient();
+    const unsubscribe = createSupabaseArrivals(f.client).subscribe(ID.toUpperCase(), () => {});
+    await flush();
+    expect(f.channelNames).toEqual([`capture:${ID}`]);
+    expect(f.filters[0]).toMatchObject({ filter: `id=eq.${ID}` });
+    unsubscribe();
+  });
+
+  it('creates no channel if the caller unsubscribed while the token was being set', async () => {
+    const f = fakeClient();
+    const unsubscribe = createSupabaseArrivals(f.client).subscribe(ID, () => {});
+    unsubscribe();
+    await flush();
+    expect(f.channelNames).toEqual([]);
+    expect(f.removed).toHaveLength(0);
   });
 
   it('delivers the capture\'s tasks, in order, when the status becomes done', async () => {
     const f = fakeClient();
     const got: CaptureArrival[] = [];
-    createSupabaseArrivals(f.client).subscribe(ID, (a) => got.push(a));
+    await open(f, (a) => got.push(a));
     f.setStatus('SUBSCRIBED');
     await flush();
     f.emitCapture('parsing');
@@ -100,7 +146,7 @@ describe('realtime capture arrivals', () => {
   it('delivers once even when done is seen twice', async () => {
     const f = fakeClient();
     const got: CaptureArrival[] = [];
-    createSupabaseArrivals(f.client).subscribe(ID, (a) => got.push(a));
+    await open(f, (a) => got.push(a));
     f.emitCapture('done');
     f.emitCapture('done');
     await flush();
@@ -112,7 +158,7 @@ describe('realtime capture arrivals', () => {
   it('delivers a result that finished before the channel was live (catch-up on join)', async () => {
     const f = fakeClient({ captureStatus: 'done' });
     const got: CaptureArrival[] = [];
-    createSupabaseArrivals(f.client).subscribe(ID, (a) => got.push(a));
+    await open(f, (a) => got.push(a));
     expect(got).toEqual([]);
     f.setStatus('SUBSCRIBED');
     await flush();
@@ -122,7 +168,7 @@ describe('realtime capture arrivals', () => {
   it('does not deliver while parsing, and does not deliver a failed capture', async () => {
     const f = fakeClient({ captureStatus: 'parsing' });
     const got: CaptureArrival[] = [];
-    createSupabaseArrivals(f.client).subscribe(ID, (a) => got.push(a));
+    await open(f, (a) => got.push(a));
     f.setStatus('SUBSCRIBED');
     await flush();
     f.emitCapture('failed');
@@ -135,7 +181,7 @@ describe('realtime capture arrivals', () => {
     const f = fakeClient();
     f.tasks.length = 0;
     const got: CaptureArrival[] = [];
-    createSupabaseArrivals(f.client).subscribe(ID, (a) => got.push(a));
+    await open(f, (a) => got.push(a));
     f.emitCapture('done');
     await flush();
     expect(got).toEqual([{ capture_id: ID, tasks: [] }]);
@@ -144,7 +190,7 @@ describe('realtime capture arrivals', () => {
   it('keeps listening after a failed task read and delivers on the next join', async () => {
     const f = fakeClient({ captureStatus: 'done', tasksError: true });
     const got: CaptureArrival[] = [];
-    createSupabaseArrivals(f.client).subscribe(ID, (a) => got.push(a));
+    await open(f, (a) => got.push(a));
     f.setStatus('SUBSCRIBED');
     await flush();
     expect(got).toEqual([]);
@@ -158,7 +204,7 @@ describe('realtime capture arrivals', () => {
   it('ignores channel errors (supabase-js rejoins by itself)', async () => {
     const f = fakeClient();
     const got: CaptureArrival[] = [];
-    createSupabaseArrivals(f.client).subscribe(ID, (a) => got.push(a));
+    await open(f, (a) => got.push(a));
     f.setStatus('CHANNEL_ERROR');
     f.setStatus('TIMED_OUT');
     await flush();
@@ -168,7 +214,7 @@ describe('realtime capture arrivals', () => {
   it('unsubscribe removes the channel and stops delivery', async () => {
     const f = fakeClient();
     const got: CaptureArrival[] = [];
-    const unsubscribe = createSupabaseArrivals(f.client).subscribe(ID, (a) => got.push(a));
+    const unsubscribe = await open(f, (a) => got.push(a));
     unsubscribe();
     expect(f.removed).toHaveLength(1);
     f.emitCapture('done');

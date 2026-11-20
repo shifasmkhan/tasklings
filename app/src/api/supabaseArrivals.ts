@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 
 import type { CaptureArrival, CaptureArrivals } from './arrivals';
 import type { Task } from './types';
@@ -7,6 +7,13 @@ import { logEvent } from '@/lib/log';
 // CaptureArrivals over Supabase realtime. process-capture answers 202 and works in the background;
 // the app hears about the result from the user's own captures row. Realtime postgres_changes apply
 // the subscriber's row-level security, so another user's capture id yields no events at all.
+//
+// Private channels only (TM-05): the hosted project has "Allow public access" off, so the channel is
+// created with `config.private = true`, topic `capture:<capture_id>`, and joining it needs the
+// caller's JWT (realtime.setAuth() hands the channel the signed-in user's token before it joins) and
+// a SELECT policy on realtime.messages that allows only the topics of the caller's own captures
+// (migration 20261119000100). That check guards the join; the postgres_changes events themselves
+// still go through the captures table's RLS for each subscriber.
 //
 // Flow per capture: subscribe to changes of captures.id = <id>; when the status becomes `done`,
 // read the capture's tasks and deliver them once. The read (not the event stream) is the source of
@@ -27,16 +34,18 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 export function createSupabaseArrivals(client: SupabaseClient): CaptureArrivals {
   return {
-    subscribe(captureId, listener) {
+    subscribe(rawId, listener) {
       // The id goes into a realtime filter string, so it must be exactly a UUID.
-      if (!UUID.test(captureId)) {
+      if (!UUID.test(rawId)) {
         logEvent('capture.realtime_bad_id', {});
         return () => {};
       }
+      // The join policy compares the topic as text with the lowercase uuid.
+      const captureId = rawId.toLowerCase();
       let finished = false;
       let reading = false;
 
-      const channel = client.channel(`capture-${captureId}`);
+      let channel: RealtimeChannel | null = null;
 
       async function deliver(): Promise<void> {
         if (finished || reading) return;
@@ -72,25 +81,38 @@ export function createSupabaseArrivals(client: SupabaseClient): CaptureArrivals 
       }
 
       function stop(): void {
-        void client.removeChannel(channel);
+        if (channel) void client.removeChannel(channel);
       }
 
-      channel
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'captures', filter: `id=eq.${captureId}` },
-          (payload) => {
-            const row = payload.new as { status?: unknown } | undefined;
-            if (row?.status === 'done') void deliver();
-          },
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') void catchUp();
-          else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            // supabase-js rejoins by itself; the catch-up runs again when it does.
-            logEvent('capture.realtime_error', { capture_id: captureId, code: status });
-          }
-        });
+      async function start(): Promise<void> {
+        try {
+          // No argument: use the session's access token (supabase-js keeps it fresh afterwards).
+          await client.realtime.setAuth();
+        } catch {
+          // The join below then fails on its own (CHANNEL_ERROR) and is logged; nothing to add.
+          logEvent('capture.realtime_auth_failed', { capture_id: captureId });
+        }
+        if (finished) return; // unsubscribed while the token was being set
+        channel = client.channel(`capture:${captureId}`, { config: { private: true } });
+        channel
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'captures', filter: `id=eq.${captureId}` },
+            (payload) => {
+              const row = payload.new as { status?: unknown } | undefined;
+              if (row?.status === 'done') void deliver();
+            },
+          )
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') void catchUp();
+            else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              // supabase-js rejoins by itself; the catch-up runs again when it does.
+              logEvent('capture.realtime_error', { capture_id: captureId, code: status });
+            }
+          });
+      }
+
+      void start();
 
       return () => {
         if (finished) return;

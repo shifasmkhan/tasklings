@@ -9,6 +9,13 @@
       "ios": {
         "simulator": true
       }
+    },
+    "simulator-live": {
+      "distribution": "internal",
+      "environment": "development",
+      "ios": {
+        "simulator": true
+      }
     }
   }
 }

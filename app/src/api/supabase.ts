@@ -3,6 +3,7 @@
 import 'react-native-url-polyfill/auto';
 
 import {
+  type AuthError,
   createClient,
   FunctionsFetchError,
   FunctionsHttpError,
@@ -12,6 +13,7 @@ import {
 
 import type { CaptureArrivals } from './arrivals';
 import { assertClockTime, normalizeClockTime } from './clockTime';
+import { assertDevSignInEnabled, isSixDigitCode, normalizeEmail } from './devSignIn';
 import { ApiError, CLIENT_ERROR_CODES, toApiError } from './errors';
 import type { SessionStorage } from './secureSessionStorage';
 import { createSupabaseArrivals, TASK_COLUMNS } from './supabaseArrivals';
@@ -25,6 +27,7 @@ import type {
   Profile,
   ProfileTimesInput,
   Session,
+  SignInMethod,
   Task,
   TaskDetail,
   TaskEdit,
@@ -144,6 +147,27 @@ function toProfile(row: unknown): Profile {
   };
 }
 
+function toSession(session: {
+  access_token: string;
+  user: { id: string };
+  expires_at?: number;
+  expires_in: number;
+}): Session {
+  return {
+    access_token: session.access_token,
+    user_id: session.user.id,
+    expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + session.expires_in,
+  };
+}
+
+/** Auth failures keep only a stable code: network problems are retryable, everything else is one generic code. */
+function authFailure(error: AuthError | null, code: string): ApiError {
+  if (error && isAuthRetryableFetchError(error)) {
+    return new ApiError(CLIENT_ERROR_CODES.network, 'Network request failed');
+  }
+  return new ApiError(code, 'Request refused');
+}
+
 export function createSupabaseApi(config: SupabaseConfig): SupabaseApiClient {
   const base = config.url.replace(/\/+$/, '');
   if (!base.startsWith('https://') && !LOOPBACK.test(base)) {
@@ -189,6 +213,37 @@ export function createSupabaseApi(config: SupabaseConfig): SupabaseApiClient {
     client,
     arrivals: createSupabaseArrivals(client),
 
+    // Owner-only dev sign-in (TM-10). Each method checks the build flag before anything else, so a
+    // build without EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1 never sends one of these requests. The server's
+    // text is never passed on, and neither the address nor the code is ever logged.
+    async requestEmailCode(email: string): Promise<void> {
+      assertDevSignInEnabled();
+      const { error } = await client.auth.signInWithOtp({
+        email: normalizeEmail(email),
+        // Existing users only: a code can't create an account.
+        options: { shouldCreateUser: false },
+      });
+      if (error) throw authFailure(error, 'code_request_failed');
+    },
+
+    async verifyEmailCode(email: string, code: string): Promise<Session> {
+      assertDevSignInEnabled();
+      const address = normalizeEmail(email);
+      if (!isSixDigitCode(code)) throw new ApiError('code_invalid', 'The code must be 6 digits', 400);
+      const { data, error } = await client.auth.verifyOtp({ email: address, token: code, type: 'email' });
+      if (error || !data.session) throw authFailure(error, 'code_invalid');
+      return toSession(data.session);
+    },
+
+    async signInMethod(): Promise<SignInMethod | null> {
+      const { data, error } = await client.auth.getSession();
+      if (error || !data.session) return null;
+      // Supabase records how the account signs in. Only `email` is treated as the limited kind;
+      // anything else keeps the Apple flow, and the server's session-freshness check still decides.
+      const provider = (data.session.user.app_metadata as { provider?: unknown } | undefined)?.provider;
+      return provider === 'email' ? 'email' : 'apple';
+    },
+
     async signInWithApple(identityToken: string, rawNonce: string): Promise<Session> {
       if (!identityToken || !rawNonce) {
         throw new ApiError('invalid_argument', 'Identity token and nonce are required', 400);
@@ -205,12 +260,7 @@ export function createSupabaseApi(config: SupabaseConfig): SupabaseApiClient {
         }
         throw new ApiError('unauthenticated', 'Sign in failed', error?.status ?? 401);
       }
-      const { session } = data;
-      return {
-        access_token: session.access_token,
-        user_id: session.user.id,
-        expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + session.expires_in,
-      };
+      return toSession(data.session);
     },
 
     processCapture(req: ProcessCaptureRequest): Promise<ProcessCaptureResponse> {
