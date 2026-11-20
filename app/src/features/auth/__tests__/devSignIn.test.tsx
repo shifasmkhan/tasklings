@@ -2,14 +2,14 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import { ApiProvider } from '@/api/ApiProvider';
-import { createMockApi, MOCK_EMAIL_CODE, type MockApiClient } from '@/api/mock';
+import { createMockApi, MOCK_PASSWORD, type MockApiClient } from '@/api/mock';
 import type { ApiClient } from '@/api/types';
 import { COPY } from '@/features/onboarding/OnboardingFlow';
 import { renderFlow } from '@/features/onboarding/testing';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { APPLE_ONLY_COPY } from '@/features/settings/logic';
 import { DevSignInScreen } from '../DevSignInScreen';
-import { DEV_COPY, DEV_SIGNIN_LINK, SEND_COOLDOWN_MS } from '../DevSignInForm';
+import { DEV_COPY, DEV_SIGNIN_LINK, FAILURE_COOLDOWN_MS } from '../DevSignInForm';
 
 jest.mock('expo-router', () => ({
   Redirect: ({ href }: { href: string }) => {
@@ -42,109 +42,79 @@ describe('onboarding sign-in step', () => {
     await toSignIn();
     expect(screen.getByLabelText('Sign in with Apple')).toBeOnTheScreen();
     expect(screen.queryByLabelText(DEV_SIGNIN_LINK)).not.toBeOnTheScreen();
-    expect(screen.queryByLabelText('Send code')).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Password')).not.toBeOnTheScreen();
   });
 
-  it('with the flag the link sits below the Apple button and opens the email-code form', async () => {
+  it('with the flag the link sits below the Apple button and opens the form', async () => {
     process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
     await toSignIn();
     expect(screen.getByLabelText('Sign in with Apple')).toBeOnTheScreen();
     await press(DEV_SIGNIN_LINK);
     expect(screen.getByLabelText('Email')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Send code')).toBeOnTheScreen();
-    expect(screen.getByLabelText('6-digit code')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Password')).toBeOnTheScreen();
     expect(screen.getByLabelText('Sign in')).toBeOnTheScreen();
     await press('Back');
     expect(screen.getByLabelText('Sign in with Apple')).toBeOnTheScreen();
   });
 
-  it('signs in with the mock code and moves on to the times step', async () => {
+  it('the password field is secure and tells iOS Passwords what it is', async () => {
+    process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
+    await toSignIn();
+    await press(DEV_SIGNIN_LINK);
+    const password = screen.getByLabelText('Password');
+    expect(password.props.secureTextEntry).toBe(true);
+    expect(password.props.textContentType).toBe('password');
+    expect(password.props.autoComplete).toBe('current-password');
+    expect(screen.getByLabelText('Email').props.textContentType).toBe('username');
+  });
+
+  it('signs in with the mock password and moves on to the times step', async () => {
     process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
     const h = await toSignIn();
-    const send = jest.spyOn(h.api, 'requestEmailCode');
     await press(DEV_SIGNIN_LINK);
+    expect(screen.getByLabelText('Sign in')).toBeDisabled();
     await type('Email', 'owner@example.test');
-    await type('6-digit code', MOCK_EMAIL_CODE);
+    await type('Password', MOCK_PASSWORD);
     await press('Sign in');
     await screen.findByText(COPY.timesTitle);
     expect(await h.api.signInMethod()).toBe('email');
-    expect(send).not.toHaveBeenCalled(); // asking for a code is optional with the mock
   });
 
-  it('Send needs an email, then stays off for 60 seconds', async () => {
+  it('a failure says only "Couldn’t sign in", clears the password and disables Sign in for 5 seconds', async () => {
     jest.useFakeTimers({ advanceTimers: true });
     process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
-    const h = await toSignIn();
-    const send = jest.spyOn(h.api, 'requestEmailCode');
-    await press(DEV_SIGNIN_LINK);
-    expect(screen.getByLabelText('Send code')).toBeDisabled();
-    await type('Email', 'owner@example.test');
-    expect(screen.getByLabelText('Send code')).toBeEnabled();
-
-    await press('Send code');
-    expect(send).toHaveBeenCalledWith('owner@example.test');
-    await screen.findByText(new RegExp(DEV_COPY.sent));
-    expect(screen.getByLabelText('Send code')).toBeDisabled();
-    expect(screen.getByText(/another code in 60 s/)).toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByLabelText('Send code')); // a press while disabled does nothing
-    expect(send).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      jest.advanceTimersByTime(30_000);
-    });
-    expect(screen.getByLabelText('Send code')).toBeDisabled();
-    expect(screen.getByText(/another code in 30 s/)).toBeOnTheScreen();
-
-    await act(async () => {
-      jest.advanceTimersByTime(SEND_COOLDOWN_MS - 30_000);
-    });
-    expect(screen.getByLabelText('Send code')).toBeEnabled();
-  });
-
-  it('a wrong code says only that it didn’t work, and the person stays on the form', async () => {
-    process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
     await toSignIn();
-    await press(DEV_SIGNIN_LINK);
-    await type('Email', 'owner@example.test');
-    await type('6-digit code', '123456');
-    await press('Sign in');
-    await screen.findByText(DEV_COPY.verifyFailed);
-    expect(screen.getByLabelText('Send code')).toBeOnTheScreen();
-  });
-
-  it('the code field takes digits only, at most 6, and Sign in waits for all 6', async () => {
-    process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
-    await toSignIn();
-    await press(DEV_SIGNIN_LINK);
-    await type('Email', 'owner@example.test');
-    await type('6-digit code', '12a3-45678');
-    expect(screen.getByLabelText('6-digit code').props.value).toBe('123456');
-    await type('6-digit code', '123');
-    expect(screen.getByLabelText('Sign in')).toBeDisabled();
-  });
-
-  it('a failed send says "Couldn’t send a code." for every server-side reason, and starts the cooldown', async () => {
-    process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
-    const h = await toSignIn();
     await press(DEV_SIGNIN_LINK);
     await type('Email', 'nobody@example.test');
-    h.api.failNext('code_request_failed');
-    await press('Send code');
-    await screen.findByText(DEV_COPY.sendFailed);
-    expect(screen.queryByText(/nobody/)).not.toBeOnTheScreen();
-    expect(screen.getByLabelText('Send code')).toBeDisabled();
+    await type('Password', 'wrong-password');
+    await press('Sign in');
+    await screen.findByText(DEV_COPY.failed);
+    expect(screen.queryByText(/nobody|wrong/)).not.toBeOnTheScreen();
+    expect(screen.getByLabelText('Password').props.value).toBe('');
+
+    await type('Password', MOCK_PASSWORD);
+    expect(screen.getByLabelText('Sign in')).toBeDisabled();
+    await act(async () => {
+      jest.advanceTimersByTime(FAILURE_COOLDOWN_MS - 1000);
+    });
+    expect(screen.getByLabelText('Sign in')).toBeDisabled();
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.getByLabelText('Sign in')).toBeEnabled();
+    await press('Sign in');
+    await screen.findByText(COPY.timesTitle);
   });
 
-  it('a send that never reached the server says so and may be retried at once', async () => {
+  it('a network failure is also the generic message', async () => {
     process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
     const h = await toSignIn();
     await press(DEV_SIGNIN_LINK);
     await type('Email', 'owner@example.test');
+    await type('Password', MOCK_PASSWORD);
     h.api.failNext('network_error');
-    await press('Send code');
-    await screen.findByText(DEV_COPY.network);
-    expect(screen.getByLabelText('Send code')).toBeEnabled();
+    await press('Sign in');
+    await screen.findByText(DEV_COPY.failed);
   });
 });
 
@@ -160,7 +130,7 @@ describe('standalone dev sign-in screen (opened from Settings)', () => {
     await render(ui(createMockApi({ tasks: [] })));
     expect(screen.getByText('redirect:/')).toBeOnTheScreen();
     expect(screen.queryByLabelText('Email')).not.toBeOnTheScreen();
-    expect(screen.queryByLabelText('Send code')).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Password')).not.toBeOnTheScreen();
   });
 
   it('with the flag it shows the form and reports a successful sign-in', async () => {
@@ -168,7 +138,7 @@ describe('standalone dev sign-in screen (opened from Settings)', () => {
     const onSignedIn = jest.fn();
     await render(ui(createMockApi({ tasks: [] }), onSignedIn));
     await type('Email', 'owner@example.test');
-    await type('6-digit code', MOCK_EMAIL_CODE);
+    await type('Password', MOCK_PASSWORD);
     await press('Sign in');
     expect(onSignedIn).toHaveBeenCalledTimes(1);
   });

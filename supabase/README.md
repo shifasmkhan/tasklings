@@ -183,14 +183,11 @@ The steps for the owner's own hosted project, in order. Nothing here is a secret
    ```
 
    Apple secrets (`APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`) wait for the Apple membership; delete-account then deletes the account without revoking (see the failure policy below).
-5. **Auth settings** (Dashboard, Authentication). This project has no Apple provider yet, and the owner signs in with an email code (TM-10):
-   - Sign In / Providers, **Email: on**, **Allow new users to sign up: off**, **Confirm email: on**. Anonymous sign-ins: off. Phone: off. Apple: off until US-10. Manual linking: off.
-   - Email OTP length **6** (the app only accepts 6 digits). Set the OTP expiry short, 10 minutes or less.
-   - Authentication, Emails, Templates: **Magic Link** is the email `signInWithOtp` sends to an existing user. It must contain `{{ .Token }}` (the code); the default template has only a link. Add a line such as `Your code is {{ .Token }}`.
+5. **Auth settings** (Dashboard, Authentication). This project has no Apple provider yet, and the owner signs in with email and password (TM-10). No email template or SMTP setup is needed: nothing is emailed.
+   - Sign In / Providers, **Email: on** (password sign-in needs the Email provider), **Allow new users to sign up: off**. Anonymous sign-ins: off. Phone: off. Apple: off until US-10. Manual linking: off.
    - Sessions: refresh-token rotation on, reuse interval 10 s, access-token lifetime 3600 s.
-   - Supabase's built-in email sender is rate-limited to a few messages an hour. Enough for one owner; if codes stop arriving, wait, or add your own SMTP provider.
-6. **Create the owner user**: Authentication, Users, **Add user**, **Create new user**, your email, tick **Auto Confirm User**. Because sign-ups are off, this is the only way an account exists; `shouldCreateUser: false` in the app means a code can never create one either. The `handle_new_user` trigger creates the profile row.
-7. **Data API**: Project Settings, Data API, Exposed schemas: **`public` only** (not `private`, not `graphql_public` unless you use it).
+   - Leave Supabase's Auth rate limits at their defaults or stricter (Authentication, Rate Limits): they are what slows password guessing against the one account.
+6. **Create the owner user**: Authentication, Users, **Add user**, **Create new user**, your email and a **long random password from your password manager** (at least 20 random characters, used nowhere else), tick **Auto Confirm User**. Because sign-ups are off, this is the only way an account exists. Save the entry in the password manager so iOS Passwords can fill it in the app. The `handle_new_user` trigger creates the profile row.
 8. **Realtime, after the migration is deployed (step 2):** Project Settings, Realtime, **Allow public access: off**. Do it in this order: with the setting off and no policy, the app's channel join is refused; with the policy in place and the setting still on, nothing breaks. See "Realtime and private channels".
 9. **Point the app at it**: the project URL and anon key go into EAS environment variables, not the repo (`app/README.md`, "Live Simulator build").
 

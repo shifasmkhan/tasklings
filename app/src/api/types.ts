@@ -121,14 +121,12 @@ export interface ApiClient {
    */
   signInWithApple(identityToken: string, rawNonce: string): Promise<Session>;
   /**
-   * Owner-only dev sign-in (interim PoC, TM-10): asks Supabase Auth to email a one-time code to an
-   * existing user (`shouldCreateUser: false`). Exists only in builds made with
+   * Owner-only dev sign-in (interim PoC, TM-10): email and password of the owner's existing user
+   * (Supabase Auth `signInWithPassword`; sign-ups are off). Exists only in builds made with
    * EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1; otherwise rejects with `unavailable` without any request.
-   * Rejects with `code_request_failed` (the reason is never revealed) or `network_error`.
+   * Rejects with `signin_failed` (the reason is never revealed) or `network_error`.
    */
-  requestEmailCode(email: string): Promise<void>;
-  /** Dev sign-in, second step: exchanges the 6-digit code for a session. Same `unavailable` rule. Rejects with `code_invalid` or `network_error`. */
-  verifyEmailCode(email: string, code: string): Promise<Session>;
+  signInWithPassword(email: string, password: string): Promise<Session>;
   /** How the current session was made, or null when signed out. Export and delete need `apple`. */
   signInMethod(): Promise<SignInMethod | null>;
   /** process-capture edge function: 202 {capture_id}; tasks arrive by realtime. */
