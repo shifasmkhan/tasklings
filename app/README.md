@@ -50,7 +50,7 @@ npm run test:ci
 | `src/features/today/` | Today screen (US-04), the Start here rule and grouping logic, undo (US-09) |
 | `src/features/task/` | Task detail (US-05): inline editing with autosave, script card, "Found for you", Done / Tomorrow / Drop with undo |
 | `src/features/settings/` | Settings (US-11) and Recently dropped (US-09): times, restore, export and delete, with the Apple re-sign-in seam and the share-sheet export |
-| `src/features/auth/` | `appleCredential.ts` (the Sign in with Apple seam) and the owner-only email-code sign-in (`DevSignInForm`, `DevSignInScreen`; `src/api/devSignIn.ts` holds the build flag), TM-10 |
+| `src/features/auth/` | `appleCredential.ts` (the Sign in with Apple seam) and the owner-only email and password sign-in (`DevSignInForm`, `DevSignInScreen`; `src/api/devSignIn.ts` holds the build flag), TM-10 |
 | `src/features/onboarding/` | First-run onboarding (US-19): flow, first-run flag, notification permission interface; sign-in uses the shared `features/auth/appleCredential.ts` |
 | `src/features/checkin/` | Evening check-in (US-07, US-12): card stack, still-need-this cards, drop reasons, summary |
 | `src/theme/` | Light and dark palettes; contrast is tested |
@@ -167,7 +167,7 @@ The app uses the mock **unless both** variables below are set to non-empty value
 
 **Both are public by design.** Expo inlines `EXPO_PUBLIC_*` variables into the JavaScript bundle at build time, so they ship in every copy of the app; the anon key only identifies the project, and row-level security plus the user session do the protecting. `.env.example` holds placeholders only; `.env.local` is git-ignored. The service-role key must never go here: the client refuses a service-role JWT or an `sb_secret_` key (`invalid_config`). If one variable is set and the URL is invalid, the app fails at startup instead of silently falling back to the mock.
 
-- **Sign-in.** Sign in with Apple is US-10. Until it lands, a live client with no session fails every call except the sign-in methods at once with `unauthenticated` (HTTP 401 semantics) without sending a request; the anon key is never used as a bearer token. The only way to get a session before US-10 is the owner-only email-code sign-in of the `simulator-live` build ("Live Simulator build" below).
+- **Sign-in.** Sign in with Apple is US-10. Until it lands, a live client with no session fails every call except the sign-in methods at once with `unauthenticated` (HTTP 401 semantics) without sending a request; the anon key is never used as a bearer token. The only way to get a session before US-10 is the owner-only email and password sign-in of the `simulator-live` build ("Live Simulator build" below).
 - **Session storage (security review S-12).** The Supabase session (access and refresh tokens) is stored only in the iOS Keychain through `expo-secure-store`, with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`: readable only while the device is unlocked, not synced to iCloud, not restored onto another device. A session is longer than SecureStore's 2048 bytes per value, so `secureSessionStorage.ts` splits it into 512-character chunks. AsyncStorage is never used; ESLint rejects importing it.
 - **Client.** `@supabase/supabase-js` (pinned) covers everything: `rpc()` for `today_tasks`, the task RPCs and `undo_capture`; `from('tasks').update()` for task edits; `functions.invoke()` for the edge functions; realtime for `CaptureArrivals`. `react-native-url-polyfill` is imported by `supabase.ts` because supabase-js builds URLs with `URL.searchParams`, which React Native's built-in `URL` only approximates. Token refresh runs only while the app is active.
 - **Errors.** PostgREST errors map to the standard `{code, message}` shape (stable code from `hint`, see `supabase/README.md`), edge-function errors come through unchanged, a request that never got an answer is `network_error`, and server text for platform errors is never passed on.
@@ -176,7 +176,7 @@ The app uses the mock **unless both** variables below are set to non-empty value
 
 ### Live Simulator build (proof of concept, before the Apple membership)
 
-PM decision 2026-11-19: run the app against the hosted Supabase project before buying the Apple membership. There is no Sign in with Apple yet, so builds made with the flag `EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1` have an owner-only email-code sign-in (TM-10). The flag is a build-time switch, not `__DEV__`, because the EAS Simulator build is a Release build.
+PM decision 2026-11-19: run the app against the hosted Supabase project before buying the Apple membership. There is no Sign in with Apple yet, so builds made with the flag `EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1` have an owner-only email and password sign-in (TM-10) for the one user created in the Supabase dashboard (`supabase/README.md`, "Hosted project setup"); sign-ups are off, so nobody else can get an account. The flag is a build-time switch, not `__DEV__`, because the EAS Simulator build is a Release build.
 
 **Owner steps** (the hosted project must already be set up and have your user: `supabase/README.md`, "Hosted project setup"):
 
@@ -196,13 +196,13 @@ PM decision 2026-11-19: run the app against the hosted Supabase project before b
    ```sh
    npx eas-cli@latest build -p ios --profile simulator-live
    ```
-3. Open the app, go through onboarding, and on the Sign in step tap **Developer sign-in (email code)** under the Apple button. Enter your email, tap **Send code**, read the 6-digit code from your mailbox, enter it and tap **Sign in**. Send stays off for 60 seconds after each send. Errors say only "Couldn't send a code" or "That code didn't work". Later, when signed out, the same link is in Settings.
+3. Open the app, go through onboarding, and on the Sign in step tap **Developer sign-in** under the Apple button. Enter the owner email and password (from your password manager; iOS Passwords can fill the fields) and tap **Sign in**. A failed attempt says only "Couldn't sign in" and disables the button for 5 seconds. Later, when signed out, the same link is in Settings.
 
-**What the flag does.** With it absent (every other build, including `simulator`), the screen is not registered in the navigator, the onboarding link and the Settings entry don't render, and `requestEmailCode` / `verifyEmailCode` reject with `unavailable` before any request. `src/__tests__/easConfig.test.ts` fails if any `eas.json` profile other than `simulator-live` sets the flag, resolves to the `development` environment (including `developmentClient: true`) or extends `simulator-live`, if `simulator-live` is not `distribution: internal` with `ios.simulator: true` and `environment: development`, or if any profile carries a Supabase value. Because of the `development` environment, **don't add a dev-client or other profile that uses it** without removing the flag from that environment first.
+**What the flag does.** With it absent (every other build, including `simulator`), the screen is not registered in the navigator, the onboarding link and the Settings entry don't render, and `signInWithPassword` rejects with `unavailable` before any request. `src/__tests__/easConfig.test.ts` fails if any `eas.json` profile other than `simulator-live` sets the flag, resolves to the `development` environment (including `developmentClient: true`) or extends `simulator-live`, if `simulator-live` is not `distribution: internal` with `ios.simulator: true` and `environment: development`, or if any profile carries a Supabase value. Because of the `development` environment, **don't add a dev-client or other profile that uses it** without removing the flag from that environment first.
 
-**Export and delete stay Apple-only.** An email session isn't a fresh Sign in with Apple, so the server answers `reauth_required` and Settings says "Export and delete need Sign in with Apple (coming soon)." and disables both buttons (the session's provider is read from the Supabase session; the Apple sheet is never started for an email session, since it would replace the account).
+**Export and delete stay Apple-only.** A password session isn't a fresh Sign in with Apple, so the server answers `reauth_required` and Settings says "Export and delete need Sign in with Apple (coming soon)." and disables both buttons (the session's provider (`email` for a password session) is read from the Supabase session; the Apple sheet is never started for an email session, since it would replace the account).
 
-The mock backend accepts any email and the code `000000` when the flag is set (`EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1 npx expo start`).
+The mock backend accepts any email and the password `password` when the flag is set (`EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1 npx expo start`).
 
 ## Rules for this folder
 

@@ -46,7 +46,7 @@ export function SettingsScreen({
   useEffect(() => {
     if (focusKey > 0) reloadAll();
   }, [focusKey, reloadAll]);
-  // Owner-only dev sign-in (TM-10): an email-code session can't do the Apple-only actions.
+  // Owner-only dev sign-in (TM-10): an password session can't do the Apple-only actions.
   const emailSession = s.signInMethod === 'email';
   const showDevSignIn = isDevSignInEnabled() && s.signInMethod === null && onOpenDevSignIn !== undefined;
 

@@ -1,7 +1,7 @@
 import { ApiError } from './errors';
 
 /**
- * Owner-only email-code sign-in for the proof of concept (TM-10), until Sign in with Apple (US-10).
+ * Owner-only email and password sign-in for the proof of concept (TM-10), until Sign in with Apple (US-10).
  *
  * It is a build-time switch, not `__DEV__`: the EAS Simulator build is a Release build. Expo inlines
  * `process.env.EXPO_PUBLIC_*` when it is read by its full literal name, so without the variable the
@@ -21,12 +21,12 @@ export function assertDevSignInEnabled(): void {
 export function normalizeEmail(email: string): string {
   const e = typeof email === 'string' ? email.trim().toLowerCase() : '';
   if (e.length < 3 || e.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(e)) {
-    throw new ApiError('code_request_failed', 'Invalid email', 400);
+    throw new ApiError('signin_failed', 'Invalid email', 400);
   }
   return e;
 }
 
-/** Supabase's email code is 6 digits by default (the project must keep it that way). */
-export function isSixDigitCode(code: string): boolean {
-  return typeof code === 'string' && /^\d{6}$/.test(code);
+/** Non-empty and a sane length; Supabase decides whether it is right. Never logged. */
+export function isUsablePassword(password: string): boolean {
+  return typeof password === 'string' && password.length > 0 && password.length <= 1024;
 }

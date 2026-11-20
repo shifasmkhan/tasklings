@@ -235,7 +235,7 @@ export function useSettings({ credentialSource, shareExport, onAccountDeleted }:
       setDataError(null);
       setDataMessage(null);
       try {
-        // An email-code session (owner-only dev sign-in) is not Sign in with Apple, and starting the
+        // An password session (owner-only dev sign-in) is not Sign in with Apple, and starting the
         // Apple flow here would replace it with a different account. Say so and stop.
         if ((await api.signInMethod()) === 'email') {
           if (mounted.current) {

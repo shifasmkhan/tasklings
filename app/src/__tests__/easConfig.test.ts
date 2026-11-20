@@ -1,6 +1,6 @@
 import eas from '../../eas.json';
 
-// The owner-only email-code sign-in (EXPO_PUBLIC_ENABLE_DEV_SIGNIN) must exist only in builds made
+// The owner-only email and password sign-in (EXPO_PUBLIC_ENABLE_DEV_SIGNIN) must exist only in builds made
 // with the `simulator-live` profile. The flag's value lives in the EAS `development` environment,
 // so this guards the two ways it could leak into another build: a profile that sets the variable
 // itself, and a profile that resolves to the `development` environment (or extends simulator-live).
