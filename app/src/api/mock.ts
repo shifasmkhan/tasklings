@@ -1,5 +1,5 @@
 import type { CaptureArrival, CaptureArrivals } from './arrivals';
-import { assertDevSignInEnabled, isSixDigitCode, normalizeEmail } from './devSignIn';
+import { assertDevSignInEnabled, normalizeEmail } from './devSignIn';
 import { ApiError } from './errors';
 import { assertClockTime } from './clockTime';
 import { makeTask, mockEnrichments, MOCK_SEED_CAPTURE_ID, MOCK_SEED_TRANSCRIPT, MOCK_USER_ID, seedTasks } from './fixtures';
@@ -24,8 +24,8 @@ import type {
 import { TASK_EDITABLE_FIELDS } from './types';
 import { addDays, deviceTimeZone, localIsoDate } from '@/lib/dates';
 
-/** The one-time code the mock accepts in the dev sign-in. */
-export const MOCK_EMAIL_CODE = '000000';
+/** The password the mock accepts in the dev sign-in. */
+export const MOCK_PASSWORD = 'password';
 
 export interface MockApiOptions {
   /** Starting tasks. Defaults to the synthetic seed set. */
@@ -211,19 +211,12 @@ export function createMockApi(options: MockApiOptions = {}): MockApiClient {
       return [...tasks.values()].map((t) => ({ ...t }));
     },
 
-    async requestEmailCode(email: string): Promise<void> {
+    async signInWithPassword(email: string, password: string): Promise<Session> {
       assertDevSignInEnabled();
       return call(() => {
         normalizeEmail(email);
-      });
-    },
-
-    async verifyEmailCode(email: string, code: string): Promise<Session> {
-      assertDevSignInEnabled();
-      return call(() => {
-        normalizeEmail(email);
-        // The mock accepts any email and exactly this code.
-        if (!isSixDigitCode(code) || code !== MOCK_EMAIL_CODE) throw new ApiError('code_invalid', 'Wrong code', 401);
+        // The mock accepts any email with exactly this password.
+        if (password !== MOCK_PASSWORD) throw new ApiError('signin_failed', 'Wrong password', 401);
         signInMethod = 'email';
         return {
           access_token: 'mock-session',

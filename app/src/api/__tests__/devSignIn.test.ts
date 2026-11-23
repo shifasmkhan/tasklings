@@ -1,9 +1,9 @@
 import { isDevSignInEnabled } from '../devSignIn';
-import { createMockApi, MOCK_EMAIL_CODE } from '../mock';
+import { createMockApi, MOCK_PASSWORD } from '../mock';
 import type { SessionStorage } from '../secureSessionStorage';
 import { createSupabaseApi } from '../supabase';
 
-// The owner-only email-code sign-in (TM-10) exists only when the build sets
+// The owner-only email and password sign-in (TM-10) exists only when the build sets
 // EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1. These tests cover both states for the mock and the live client.
 
 const original = process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN;
@@ -64,18 +64,16 @@ describe('without the flag (every other build)', () => {
     delete process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN;
   });
 
-  it('the live client refuses both methods with `unavailable` and sends no request', async () => {
+  it('the live client refuses it with `unavailable` and sends no request', async () => {
     const { client, fetchImpl, storage } = live();
-    await expect(client.requestEmailCode('owner@example.test')).rejects.toMatchObject({ code: 'unavailable' });
-    await expect(client.verifyEmailCode('owner@example.test', '123456')).rejects.toMatchObject({ code: 'unavailable' });
+    await expect(client.signInWithPassword('owner@example.test', 'a-long-password')).rejects.toMatchObject({ code: 'unavailable' });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(storage.map.size).toBe(0);
   });
 
-  it('the mock refuses both methods too', async () => {
+  it('the mock refuses it too', async () => {
     const mock = createMockApi({ tasks: [] });
-    await expect(mock.requestEmailCode('owner@example.test')).rejects.toMatchObject({ code: 'unavailable' });
-    await expect(mock.verifyEmailCode('owner@example.test', MOCK_EMAIL_CODE)).rejects.toMatchObject({ code: 'unavailable' });
+    await expect(mock.signInWithPassword('owner@example.test', MOCK_PASSWORD)).rejects.toMatchObject({ code: 'unavailable' });
     expect(await mock.signInMethod()).toBe('apple');
   });
 });
@@ -85,53 +83,37 @@ describe('with the flag (simulator-live builds)', () => {
     process.env.EXPO_PUBLIC_ENABLE_DEV_SIGNIN = '1';
   });
 
-  it('requestEmailCode asks for a code for an existing user only, with the address trimmed and lowercased', async () => {
-    const t = live();
-    await t.client.requestEmailCode('  Owner@Example.test ');
-    expect(t.sent().url).toContain('/auth/v1/otp');
-    expect(t.sent().body).toMatchObject({ email: 'owner@example.test', create_user: false });
-  });
-
-  it('a refused code request is one generic code, whatever the server said', async () => {
-    const t = live({ status: 422, body: { error_code: 'otp_disabled', msg: 'Signups not allowed for otp' } });
-    const err = await t.client.requestEmailCode('nobody@example.test').catch((e: unknown) => e);
-    expect(err).toMatchObject({ code: 'code_request_failed' });
-    expect(JSON.stringify(err)).not.toMatch(/signups|otp_disabled|nobody/i);
-    expect(String((err as Error).message)).not.toMatch(/signups|nobody/i);
-  });
-
-  it('a request that never got an answer is network_error', async () => {
-    const t = live(new TypeError('Network request failed'));
-    await expect(t.client.requestEmailCode('owner@example.test')).rejects.toMatchObject({ code: 'network_error' });
-  });
-
-  it('rejects a malformed address before any request', async () => {
-    const t = live();
-    for (const bad of ['', 'plain', ' ', '@', 'a b@c']) {
-      await expect(t.client.requestEmailCode(bad)).rejects.toMatchObject({ code: 'code_request_failed' });
-    }
-    expect(t.fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('verifyEmailCode exchanges the 6-digit code for a session kept in the injected (Keychain) storage', async () => {
+  it('signs in with the address trimmed and lowercased, and keeps the session in the injected (Keychain) storage', async () => {
     const t = live({ status: 200, body: session('email') });
-    const result = await t.client.verifyEmailCode('Owner@Example.test', '123456');
-    expect(t.sent().url).toContain('/auth/v1/verify');
-    expect(t.sent().body).toMatchObject({ email: 'owner@example.test', token: '123456', type: 'email' });
+    const result = await t.client.signInWithPassword('  Owner@Example.test ', 'correct horse battery');
+    expect(t.sent().url).toContain('/auth/v1/token?grant_type=password');
+    expect(t.sent().body).toMatchObject({ email: 'owner@example.test', password: 'correct horse battery' });
     expect(result).toMatchObject({ access_token: 'jwt', user_id: 'u1' });
     expect(t.storage.map.get('tasklings.auth')).toContain('"access_token":"jwt"');
     expect(await t.client.signInMethod()).toBe('email');
   });
 
-  it('a wrong code is code_invalid; a code that is not 6 digits never leaves the device', async () => {
-    const t = live({ status: 403, body: { error_code: 'otp_expired', msg: 'Token has expired or is invalid' } });
-    await expect(t.client.verifyEmailCode('owner@example.test', '123456')).rejects.toMatchObject({ code: 'code_invalid' });
-    const calls = t.fetchImpl.mock.calls.length;
-    for (const bad of ['', '12345', '1234567', 'abcdef', '12 456']) {
-      await expect(t.client.verifyEmailCode('owner@example.test', bad)).rejects.toMatchObject({ code: 'code_invalid' });
-    }
-    expect(t.fetchImpl.mock.calls.length).toBe(calls);
+  it('a refused sign-in is one generic code, whatever the server said', async () => {
+    const t = live({ status: 400, body: { error_code: 'invalid_credentials', msg: 'Invalid login credentials' } });
+    const err = await t.client.signInWithPassword('nobody@example.test', 'wrong').catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'signin_failed' });
+    expect(JSON.stringify(err)).not.toMatch(/invalid|credentials|nobody|wrong/i);
+    expect(String((err as Error).message)).not.toMatch(/credentials|nobody|wrong/i);
     expect(await t.client.signInMethod()).toBeNull();
+  });
+
+  it('a request that never got an answer is network_error', async () => {
+    const t = live(new TypeError('Network request failed'));
+    await expect(t.client.signInWithPassword('owner@example.test', 'x')).rejects.toMatchObject({ code: 'network_error' });
+  });
+
+  it('rejects a malformed address or an empty password before any request', async () => {
+    const t = live();
+    for (const bad of ['', 'plain', ' ', '@', 'a b@c']) {
+      await expect(t.client.signInWithPassword(bad, 'x')).rejects.toMatchObject({ code: 'signin_failed' });
+    }
+    await expect(t.client.signInWithPassword('owner@example.test', '')).rejects.toMatchObject({ code: 'signin_failed' });
+    expect(t.fetchImpl).not.toHaveBeenCalled();
   });
 
   it('signInMethod is null signed out, email for an email session and apple otherwise', async () => {
@@ -141,12 +123,11 @@ describe('with the flag (simulator-live builds)', () => {
     expect(await apple.client.signInMethod()).toBe('apple');
   });
 
-  it('the mock accepts any email with the fixed code and rejects others; its export then fails closed', async () => {
+  it('the mock accepts any email with the fixed password and rejects others; its export then fails closed', async () => {
     const mock = createMockApi({ tasks: [] });
-    await mock.requestEmailCode('anyone@example.test');
-    await expect(mock.verifyEmailCode('anyone@example.test', '111111')).rejects.toMatchObject({ code: 'code_invalid' });
+    await expect(mock.signInWithPassword('anyone@example.test', 'nope')).rejects.toMatchObject({ code: 'signin_failed' });
     expect(await mock.signInMethod()).toBe('apple');
-    await expect(mock.verifyEmailCode('anyone@example.test', MOCK_EMAIL_CODE)).resolves.toMatchObject({ access_token: 'mock-session' });
+    await expect(mock.signInWithPassword('anyone@example.test', MOCK_PASSWORD)).resolves.toMatchObject({ access_token: 'mock-session' });
     expect(await mock.signInMethod()).toBe('email');
     await expect(mock.exportData()).rejects.toMatchObject({ code: 'reauth_required' });
     await expect(mock.deleteAccount('code')).rejects.toMatchObject({ code: 'reauth_required' });

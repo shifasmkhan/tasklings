@@ -13,7 +13,7 @@ import {
 
 import type { CaptureArrivals } from './arrivals';
 import { assertClockTime, normalizeClockTime } from './clockTime';
-import { assertDevSignInEnabled, isSixDigitCode, normalizeEmail } from './devSignIn';
+import { assertDevSignInEnabled, isUsablePassword, normalizeEmail } from './devSignIn';
 import { ApiError, CLIENT_ERROR_CODES, toApiError } from './errors';
 import type { SessionStorage } from './secureSessionStorage';
 import { createSupabaseArrivals, TASK_COLUMNS } from './supabaseArrivals';
@@ -215,23 +215,13 @@ export function createSupabaseApi(config: SupabaseConfig): SupabaseApiClient {
 
     // Owner-only dev sign-in (TM-10). Each method checks the build flag before anything else, so a
     // build without EXPO_PUBLIC_ENABLE_DEV_SIGNIN=1 never sends one of these requests. The server's
-    // text is never passed on, and neither the address nor the code is ever logged.
-    async requestEmailCode(email: string): Promise<void> {
-      assertDevSignInEnabled();
-      const { error } = await client.auth.signInWithOtp({
-        email: normalizeEmail(email),
-        // Existing users only: a code can't create an account.
-        options: { shouldCreateUser: false },
-      });
-      if (error) throw authFailure(error, 'code_request_failed');
-    },
-
-    async verifyEmailCode(email: string, code: string): Promise<Session> {
+    // text is never passed on, and neither the address nor the password is ever logged.
+    async signInWithPassword(email: string, password: string): Promise<Session> {
       assertDevSignInEnabled();
       const address = normalizeEmail(email);
-      if (!isSixDigitCode(code)) throw new ApiError('code_invalid', 'The code must be 6 digits', 400);
-      const { data, error } = await client.auth.verifyOtp({ email: address, token: code, type: 'email' });
-      if (error || !data.session) throw authFailure(error, 'code_invalid');
+      if (!isUsablePassword(password)) throw new ApiError('signin_failed', 'A password is required', 400);
+      const { data, error } = await client.auth.signInWithPassword({ email: address, password });
+      if (error || !data.session) throw authFailure(error, 'signin_failed');
       return toSession(data.session);
     },
 
