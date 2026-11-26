@@ -4,7 +4,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -74,11 +73,11 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
   const footerHint = s.phase === 'holding' ? COPY.holdingHint : s.phase === 'locked' ? COPY.lockedHint : COPY.idleHint;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <View
+      testID="capture-sheet"
       style={[styles.sheet, { backgroundColor: p.card, paddingBottom: Math.max(insets.bottom, 16) }]}
     >
-      <View style={styles.header}>
+      <View testID="capture-header" style={[styles.header, { backgroundColor: p.card }]}>
         <Pressable role="button" aria-label="Cancel" onPress={s.cancelAndClose} style={styles.headerSide}>
           <Text style={[styles.headerAction, { color: p.accent }]}>Cancel</Text>
         </Pressable>
@@ -103,6 +102,9 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
         </View>
       </View>
 
+      {/* Everything below the header lives in this one clipped container, so no state's content can
+          paint over the header row (the Release-build overlap). */}
+      <View testID="capture-content" style={styles.content}>
       {hint ? (
         <Text testID="capture-hint" style={[styles.hint, { color: p.text, backgroundColor: p.fill }]}>
           {hint}
@@ -110,7 +112,7 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
       ) : null}
 
       {typing ? (
-        <View style={styles.body}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.flex, styles.body]}>
           <TextInput
             testID="typed-input"
             aria-label="What do you need to do?"
@@ -129,7 +131,7 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
             style={[styles.input, { color: p.text }]}
           />
           <Text style={[styles.footnote, { color: p.secondaryText }]}>{COPY.typeFootnote}</Text>
-        </View>
+        </KeyboardAvoidingView>
       ) : denied ? (
         <View style={styles.body}>
           <Text role="alert" style={[styles.message, { color: p.text }]}>
@@ -149,7 +151,7 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
         </View>
       ) : (
         <>
-          <ScrollView style={styles.flex} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <View style={[styles.flex, styles.body]}>
             {recording ? (
               <View style={styles.statusRow}>
                 <View accessible={false} aria-hidden style={[styles.dot, { backgroundColor: p.dropAction }]} />
@@ -163,18 +165,22 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
               </View>
             ) : null}
             {recording ? (
-              <Text testID="live-transcript" style={[styles.transcript, { color: s.transcript ? p.text : p.secondaryText }]}>
+              <Text testID="live-transcript" numberOfLines={6} ellipsizeMode="head" style={[styles.transcript, { color: s.transcript ? p.text : p.secondaryText }]}>
                 {s.transcript || 'Start talking…'}
               </Text>
             ) : null}
             {recording ? <Waveform levels={s.levels} /> : null}
             {s.notice ? (
-              <Text role="alert" style={[styles.message, { color: p.text }]}>
-                {s.notice === 'no_speech' ? COPY.noSpeech : COPY.unavailable}
+              <Text testID="capture-message" role="alert" style={[styles.message, { color: p.text }]}>
+                <TypeInsteadMessage
+                  text={s.notice === 'no_speech' ? COPY.noSpeech : COPY.unavailable}
+                  color={p.accent}
+                  onPress={s.openTyping}
+                />
               </Text>
             ) : null}
             <Text style={[styles.footnote, { color: p.secondaryText }]}>{COPY.footnote}</Text>
-          </ScrollView>
+          </View>
           <View style={styles.footer}>
             <HoldToTalk
               phase={s.phase}
@@ -197,7 +203,27 @@ export function CaptureSheet({ onClose, createRecognizer = createSpeechRecognize
           </View>
         </>
       )}
-    </KeyboardAvoidingView>
+      </View>
+    </View>
+  );
+}
+
+const TYPE_INSTEAD = /type instead/i;
+
+/** The message with its "type instead" turned into a link that switches to typing. */
+function TypeInsteadMessage({ text, color, onPress }: { text: string; color: string; onPress: () => void }) {
+  const match = TYPE_INSTEAD.exec(text);
+  if (!match) return <>{text}</>;
+  const before = text.slice(0, match.index);
+  const after = text.slice(match.index + match[0].length);
+  return (
+    <>
+      {before}
+      <Text role="link" aria-label="Type instead" onPress={onPress} suppressHighlighting style={{ color, textDecorationLine: 'underline' }}>
+        {match[0]}
+      </Text>
+      {after}
+    </>
   );
 }
 
@@ -211,15 +237,26 @@ function KeyboardGlyph({ color }: { color: string }) {
 }
 
 const styles = StyleSheet.create({
-  sheet: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
+  // Each region owns its padding; nothing depends on the root's padding reaching a descendant.
+  sheet: { flex: 1, paddingTop: 8 },
   flex: { flex: 1 },
-  header: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  content: { flex: 1, paddingHorizontal: 20, overflow: 'hidden' },
+  // Header sits above the content in z-order as well as in flow, and is always tappable.
+  header: {
+    minHeight: 52,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 2,
+    elevation: 2,
+  },
   headerSide: { minWidth: MIN_TOUCH + 28, minHeight: MIN_TOUCH, justifyContent: 'center' },
   headerEnd: { alignItems: 'flex-end' },
   headerAction: { fontSize: 17 },
   title: { fontSize: 17, fontWeight: '600', flexShrink: 1, textAlign: 'center' },
   iconButton: { width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' },
-  body: { gap: 20, paddingTop: 12, flexGrow: 1 },
+  body: { gap: 20, paddingTop: 12 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   status: { fontSize: 15, fontWeight: '500' },

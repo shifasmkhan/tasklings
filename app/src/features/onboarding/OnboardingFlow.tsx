@@ -47,6 +47,8 @@ interface Props {
   nav: OnboardingNav;
   /** Bumped by the route each time it regains focus after the Capture sheet closed. */
   returnKey?: number;
+  /** Start on the Sign in step and, once signed in, go straight to Today (re-sign-in after a reinstall). */
+  signInOnly?: boolean;
   credentials?: AppleCredentialSource;
   notifications?: NotificationPermission;
   /** Test seam; default saves through the profile API. */
@@ -58,6 +60,7 @@ const defaultNotifications = createNotificationPermission();
 export function OnboardingFlow({
   nav,
   returnKey = 0,
+  signInOnly = false,
   credentials = defaultAppleCredentialSource,
   notifications = defaultNotifications,
   saveTimes,
@@ -70,7 +73,7 @@ export function OnboardingFlow({
   const defaultSave = useSaveTimes();
   const save = saveTimes ?? defaultSave;
 
-  const [step, setStep] = useState<Step>('welcome');
+  const [step, setStep] = useState<Step>(signInOnly ? 'signin' : 'welcome');
   const [busy, setBusy] = useState(false);
   // Owner-only dev sign-in (TM-10): the link and the form exist only in builds made with the flag.
   const [devSignIn, setDevSignIn] = useState(false);
@@ -117,7 +120,8 @@ export function OnboardingFlow({
       // The same credential seam Settings uses; US-10 replaces it in one place.
       const credential = await credentials();
       await api.signInWithApple(credential.identityToken, credential.rawNonce);
-      go('times');
+      if (signInOnly) nav.goToday();
+      else go('times');
     } catch (err) {
       const code = isApiError(err) ? err.code : 'unknown_error';
       logEvent('onboarding.signin_failed', { code });
@@ -179,7 +183,7 @@ export function OnboardingFlow({
               title="Developer sign-in"
               footer={<TextButton label="Back" onPress={() => setDevSignIn(false)} />}
             >
-              <DevSignInForm onSignedIn={() => go('times')} />
+              <DevSignInForm onSignedIn={() => (signInOnly ? nav.goToday() : go('times'))} />
             </StepFrame>
           );
         }

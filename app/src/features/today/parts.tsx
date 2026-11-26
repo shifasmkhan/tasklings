@@ -211,6 +211,44 @@ export function AllDone() {
   );
 }
 
+/** Brand-new user (or nothing done yet): one quiet card, no progress bar, no zero-count chips. */
+export function EmptyToday() {
+  const p = usePalette();
+  return (
+    <View style={[styles.card, styles.allDone, { backgroundColor: p.card }]}>
+      <Text role="heading" style={[styles.allDoneTitle, { color: p.text }]}>
+        Nothing here yet
+      </Text>
+      <Text style={[styles.secondary15, styles.center, { color: p.secondaryText }]}>
+        Hold the mic and say what&apos;s on your mind.
+      </Text>
+    </View>
+  );
+}
+
+/** Shown instead of the list when a live client has no session (US-19/US-10 interim). */
+export function SignedOutCard({ onSignIn }: { onSignIn: () => void }) {
+  const p = usePalette();
+  return (
+    <View style={[styles.card, styles.allDone, { backgroundColor: p.card }]}>
+      <Text role="heading" style={[styles.allDoneTitle, { color: p.text }]}>
+        You&apos;re signed out
+      </Text>
+      <Text style={[styles.secondary15, styles.center, { color: p.secondaryText }]}>
+        Sign in to see your tasks.
+      </Text>
+      <Pressable
+        role="button"
+        aria-label="Sign in"
+        onPress={onSignIn}
+        style={[styles.signInButton, { backgroundColor: p.accent }]}
+      >
+        <Text style={[styles.signInText, { color: p.onAccent }]}>Sign in</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 interface DoneTodayProps {
   tasks: Task[];
   expanded: boolean;
@@ -360,6 +398,8 @@ const styles = StyleSheet.create({
   allDone: { alignItems: 'center', gap: 10, paddingVertical: 28 },
   allDoneBadge: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
   allDoneTitle: { fontSize: 24, fontWeight: '600' },
+  signInButton: { minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, marginTop: 6 },
+  signInText: { fontSize: 17, fontWeight: '600' },
   doneHeader: { minHeight: MIN_TOUCH, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
   doneRow: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 6, paddingRight: 16, gap: 4 },
   circleHit: { width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' },

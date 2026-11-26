@@ -5,6 +5,8 @@ import { View } from 'react-native';
 
 import { armCaptureLaunch } from '@/features/capture/captureLaunch';
 import { useIntentCover } from '@/features/capture/intentLaunch';
+import { isDevSignInEnabled } from '@/api/devSignIn';
+import { armSignInLaunch } from '@/features/onboarding/signInLaunch';
 import { useOnboardingGate } from '@/features/onboarding/OnboardingProvider';
 import { usePalette } from '@/theme/colors';
 import { TodayScreen } from '@/features/today/TodayScreen';
@@ -49,6 +51,15 @@ function TodayContent() {
         openTask: (task) => router.push({ pathname: '/task/[id]', params: { id: task.id } }),
         openCheckIn: () => router.push('/check-in'),
         openSettings: () => router.push('/settings'),
+        openSignIn: () => {
+          if (isDevSignInEnabled()) {
+            router.push('/dev-signin');
+          } else {
+            // In-process flag, not a URL parameter: onboarding opens on its sign-in step.
+            armSignInLaunch();
+            router.push('/onboarding');
+          }
+        },
         onTitleLongPress: __DEV__ ? () => void gate.reset() : undefined,
       }}
     />
