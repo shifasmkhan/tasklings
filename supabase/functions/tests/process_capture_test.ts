@@ -185,6 +185,30 @@ Deno.test("process-capture: a model timeout on both attempts falls back to the r
   assert.deepEqual(store.flags, [true]);
   assert.deepEqual(store.statuses.map((s) => s.status), ["done"]);
   assert.ok(rec.events.some((e) => e.fields.codes === "model_error,model_error"));
+  const extracted = rec.events.find((e) => e.event === "capture_extracted");
+  assert.equal(extracted?.fields.model_errors, "timeout,timeout");
+  assert.equal(extracted?.fields.reason, "model_error");
+  assertNoContentLeak(rec, store);
+});
+
+Deno.test("process-capture: a 401 is logged as a status code, never the error message", async () => {
+  const model = fakeModel(
+    Object.assign(new Error(`bad key ${CANARY}`), { status: 401 }),
+    new ModelError("status_400"),
+  );
+  const { h, store, rec } = handler(fakeStore(), model.client);
+  await h(post("process-capture", VALID, tokenFor()));
+  const extracted = rec.events.find((e) => e.event === "capture_extracted");
+  assert.equal(extracted?.fields.model_errors, "status_401,status_400");
+  assertNoContentLeak(rec, store);
+});
+
+Deno.test("process-capture: model_errors is empty when no call threw", async () => {
+  const model = fakeModel(okReply(MILK));
+  const { h, rec } = handler(fakeStore(), model.client);
+  await h(post("process-capture", VALID, tokenFor()));
+  const extracted = rec.events.find((e) => e.event === "capture_extracted");
+  assert.equal(extracted?.fields.model_errors, "");
 });
 
 Deno.test("process-capture: a timeout then a good reply succeeds", async () => {

@@ -193,6 +193,8 @@ export async function processCapture(
         attempts: result.attempts.length,
         // Validator codes and model error codes only (no content).
         codes: result.attempts.flatMap((a) => a.codes).join(","),
+        // Safe model error codes (timeout, status_401, ...); empty when no call threw.
+        model_errors: result.attempts.flatMap((a) => (a.modelError ? [a.modelError] : [])).join(","),
         prompt_version: result.promptVersion,
       });
     }

@@ -129,7 +129,8 @@ async function main(): Promise<number> {
   }
   const total = noteRecords.length + injRecords.length;
   if (!dryRun && total > 0 && scorecard.schema.model_errors >= total) {
-    console.error("every model call failed: check ANTHROPIC_API_KEY, network access and --model");
+    const codes = [...new Set([...noteRecords, ...injRecords].flatMap((r) => r.attempts.flatMap((a) => (a.modelError ? [a.modelError] : []))))];
+    console.error(`every model call failed (model errors: ${codes.join(", ") || "unknown"}): check ANTHROPIC_API_KEY, network access and --model`);
   }
   console.log(`scorecard: ${outDir}scorecard.md`);
   console.log(scorecard.pass ? "PASS" : "FAIL");
