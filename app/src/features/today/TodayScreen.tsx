@@ -7,7 +7,7 @@ import { useOptionalCaptureStore, usePendingCaptures } from '@/features/capture/
 import { GearIcon, MoonIcon } from '@/components/icons';
 import { MIN_TOUCH, usePalette } from '@/theme/colors';
 import { firstNeedingReview } from './logic';
-import { AllDone, DoneToday, GroupHeader, MicBar, PendingRow, ReviewCard, StartHereCard, SummaryCard, UndoToast } from './parts';
+import { AllDone, DoneToday, EmptyToday, GroupHeader, MicBar, PendingRow, ReviewCard, SignedOutCard, StartHereCard, SummaryCard, UndoToast } from './parts';
 import { TaskRow } from './TaskRow';
 import { useToday } from './useToday';
 
@@ -17,6 +17,8 @@ export interface TodayNavigation {
   openTask: (task: Task) => void;
   openCheckIn: () => void;
   openSettings: () => void;
+  /** Signed-out live client: opens onboarding's sign-in step (or the Developer sign-in screen). */
+  openSignIn: () => void;
   /** Dev only: long-press on the title (re-runs onboarding in the Simulator). */
   onTitleLongPress?: () => void;
 }
@@ -107,6 +109,8 @@ export function TodayScreen({
 
         {t.loadState === 'loading' ? (
           <ActivityIndicator accessibilityLabel="Loading today's tasks" color={p.accent} style={styles.loading} />
+        ) : t.loadState === 'signed_out' ? (
+          <SignedOutCard onSignIn={nav.openSignIn} />
         ) : t.loadState === 'error' ? (
           <View style={[styles.errorCard, { backgroundColor: p.card }]}>
             <Text style={[styles.errorText, { color: p.text }]}>Couldn&apos;t load today&apos;s tasks.</Text>
@@ -118,7 +122,8 @@ export function TodayScreen({
           <>
             {reviewTask ? <ReviewCard task={reviewTask} onOpen={nav.openTask} /> : null}
 
-            <SummaryCard summary={t.summary} />
+            {/* With nothing open there is no list to summarise: the body card below carries the message. */}
+            {t.open.length > 0 ? <SummaryCard summary={t.summary} /> : null}
 
             {t.startHere ? (
               <StartHereCard
@@ -145,8 +150,12 @@ export function TodayScreen({
               <Text style={[styles.hint, { color: p.secondaryText }]}>
                 Swipe right to finish · swipe left for Tomorrow or Drop
               </Text>
-            ) : (
+            ) : t.done.length > 0 ? (
+              // Something was finished this session and nothing is left: celebrate once.
               <AllDone />
+            ) : (
+              // Nothing open and nothing finished: a brand-new (or empty) day.
+              <EmptyToday />
             )}
 
             {t.done.length > 0 ? (

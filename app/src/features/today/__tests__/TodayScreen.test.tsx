@@ -69,7 +69,7 @@ function fixtures(): Task[] {
   ];
 }
 
-const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), openCheckIn: jest.fn(), openSettings: jest.fn() };
+const nav: TodayNavigation = { openCapture: jest.fn(), openTask: jest.fn(), openCheckIn: jest.fn(), openSettings: jest.fn(), openSignIn: jest.fn() };
 
 async function renderToday(
   tasks: Task[] = fixtures(),
@@ -519,5 +519,74 @@ describe('Needs review (owner-approved needs_review field)', () => {
     mockScheme = 'dark';
     await renderToday([...fixtures(), flagged()]);
     expect(rowFor('Buy stamps, book the vet, email Sam').getByText('Needs a look')).toHaveStyle({ color: dark.secondaryText });
+  });
+});
+
+describe('Today empty and signed-out states (US-04, US-19)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockScheme = 'light';
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function renderBare(api: MockApiClient) {
+    await render(
+      <ApiProvider client={api}>
+        <TodayScreen nav={nav} />
+      </ApiProvider>,
+    );
+    await screen.findByText('Today');
+  }
+
+  it('a brand-new user sees one "Nothing here yet" card: no summary, progress bar, chips or all-done text', async () => {
+    await renderBare(createMockApi({ tasks: [], today: () => TODAY }));
+    expect(await screen.findByRole('heading', { name: 'Nothing here yet' })).toBeOnTheScreen();
+    expect(screen.getByText("Hold the mic and say what's on your mind.")).toBeOnTheScreen();
+    expect(screen.queryByText(/All done for today/)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Nice work/)).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Today summary')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('progressbar')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/quick|errand|bigger/)).not.toBeOnTheScreen();
+    expect(screen.getAllByRole('heading', { name: /Nothing here yet/ })).toHaveLength(1);
+  });
+
+  it('after finishing the last task there is one celebration card and no summary card', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await renderToday([fixtures()[0] as Task]);
+    await user.press(startCard().getByRole('button', { name: 'Done: Text the neighbour' }));
+    expect(screen.getAllByText('All done for today')).toHaveLength(1);
+    expect(screen.getAllByText('Nice work. Anything new can wait for tomorrow\'s brief.')).toHaveLength(1);
+    expect(screen.queryByLabelText('Today summary')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Nothing here yet')).not.toBeOnTheScreen();
+  });
+
+  it('with open tasks the summary card still shows and there is no empty card', async () => {
+    await renderToday();
+    expect(screen.getByLabelText('Today summary')).toBeOnTheScreen();
+    expect(screen.queryByText('Nothing here yet')).not.toBeOnTheScreen();
+    expect(screen.queryByText('All done for today')).not.toBeOnTheScreen();
+  });
+
+  it('an unauthenticated load shows "You\'re signed out" with a Sign in button, not the generic error', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const api = createMockApi({ tasks: [], today: () => TODAY });
+    api.failNext('unauthenticated');
+    await renderBare(api);
+    expect(await screen.findByRole('heading', { name: "You're signed out" })).toBeOnTheScreen();
+    expect(screen.queryByText("Couldn't load today's tasks.")).not.toBeOnTheScreen();
+    expect(screen.queryByText('Nothing here yet')).not.toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: 'Sign in' }));
+    expect(nav.openSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('other load failures still show the generic error with Try again', async () => {
+    const api = createMockApi({ tasks: [], today: () => TODAY });
+    api.failNext('server_error');
+    await renderBare(api);
+    expect(await screen.findByText("Couldn't load today's tasks.")).toBeOnTheScreen();
+    expect(screen.queryByText("You're signed out")).not.toBeOnTheScreen();
   });
 });

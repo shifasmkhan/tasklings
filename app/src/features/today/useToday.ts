@@ -26,7 +26,8 @@ export interface Toast {
   undo: (() => void) | null;
 }
 
-type LoadState = 'loading' | 'ready' | 'error';
+/** `signed_out`: a live client with no session answered `unauthenticated` (US-19/US-10 interim). */
+type LoadState = 'loading' | 'ready' | 'error' | 'signed_out';
 
 /**
  * State for the Today screen. Actions are optimistic: the row moves at once, the RPC runs,
@@ -89,15 +90,16 @@ export function useToday(today: string = localIsoDate()) {
           setLoadState('ready');
         },
         (err: unknown) => {
-          logEvent('today.load_failed', { code: isApiError(err) ? err.code : 'unknown_error' });
-          setLoadState('error');
+          const code = isApiError(err) ? err.code : 'unknown_error';
+          logEvent('today.load_failed', { code });
+          setLoadState(code === 'unauthenticated' ? 'signed_out' : 'error');
         },
       ),
     [api],
   );
 
   const load = useCallback(() => {
-    setLoadState((s) => (s === 'error' ? 'loading' : s));
+    setLoadState((s) => (s === 'error' || s === 'signed_out' ? 'loading' : s));
     return fetchToday();
   }, [fetchToday]);
 
