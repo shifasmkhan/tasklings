@@ -31,7 +31,8 @@ export interface ExtractInput {
 }
 
 export type FallbackReason =
-  | "invalid_output" // two attempts failed validation (or the model call threw)
+  | "invalid_output" // two attempts failed validation (or one failed and one threw)
+  | "model_error" // every attempt threw: no model output at all
   | "empty_transcript"
   | "transcript_too_long";
 
@@ -39,6 +40,11 @@ export interface AttemptRecord {
   valid: boolean;
   /** Validator codes, or "model_error" if the call threw. */
   codes: Array<ValidationCode | "model_error">;
+  /**
+   * Present only when the call threw: a safe code (timeout, network, bad_response,
+   * status_NNN, or unknown). Never the error message or any response body.
+   */
+  modelError?: string;
   /** Raw model text, for eval scorecards only. Callers in production must not log or persist it. */
   raw?: string;
 }
@@ -76,6 +82,22 @@ export interface ExtractOptions {
   nonce?: () => string;
 }
 
+const SAFE_MODEL_ERROR_CODE = /^(timeout|network|bad_response|status_\d{3})$/;
+
+/**
+ * Reduces a thrown model-call error to a content-free code. Reads only a string
+ * `code` (the edge function's ModelError) or a numeric `status` (Anthropic SDK
+ * APIError); never `message`, which may carry response text.
+ */
+export function safeModelErrorCode(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const { code, status } = err as { code?: unknown; status?: unknown };
+    if (typeof code === "string" && SAFE_MODEL_ERROR_CODE.test(code)) return code;
+    if (typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 999) return `status_${status}`;
+  }
+  return "unknown";
+}
+
 function fallback(reason: FallbackReason, attempts: AttemptRecord[]): ExtractionResult {
   return {
     status: "fallback",
@@ -108,8 +130,8 @@ export async function extractTasks(input: ExtractInput, client: ModelClient, opt
     let raw: string;
     try {
       raw = await client.complete({ system: SYSTEM_PROMPT, user, maxTokens: MAX_OUTPUT_TOKENS });
-    } catch {
-      attempts.push({ valid: false, codes: ["model_error"] });
+    } catch (err) {
+      attempts.push({ valid: false, codes: ["model_error"], modelError: safeModelErrorCode(err) });
       lastCodes = ["model_error"];
       continue;
     }
@@ -125,5 +147,5 @@ export async function extractTasks(input: ExtractInput, client: ModelClient, opt
     }
     lastCodes = record.codes;
   }
-  return fallback("invalid_output", attempts);
+  return fallback(attempts.every((a) => a.modelError !== undefined) ? "model_error" : "invalid_output", attempts);
 }

@@ -136,8 +136,57 @@ test("model errors count as failed attempts and end in fallback", async () => {
   const r = await extractTasks(input, client);
   assert.equal(r.status, "fallback");
   assert.deepEqual(r.attempts.map((a) => a.codes), [["model_error"], ["model_error"]]);
+  assert.equal(r.status === "fallback" && r.reason, "model_error");
   const recovered = await extractTasks(input, scripted([new Error("timeout"), ok]));
   assert.equal(recovered.status, "ok");
+});
+
+class CodedError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+test("a ModelError-style code is recorded as modelError", async () => {
+  for (const code of ["timeout", "network", "bad_response", "status_401", "status_529"]) {
+    const r = await extractTasks(input, scripted([new CodedError(code, "m"), new CodedError(code, "m")]));
+    assert.deepEqual(r.attempts.map((a) => a.modelError), [code, code]);
+    assert.deepEqual(r.attempts.map((a) => a.codes), [["model_error"], ["model_error"]]);
+  }
+});
+
+test("an SDK-style error with a numeric status is recorded as status_<n>", async () => {
+  const sdkErr = Object.assign(new Error("401 {secret body}"), { status: 401 });
+  const r = await extractTasks(input, scripted([sdkErr, sdkErr]));
+  assert.deepEqual(r.attempts.map((a) => a.modelError), ["status_401", "status_401"]);
+});
+
+test("unrecognised errors are recorded as unknown", async () => {
+  const odd = [new Error("boom"), new CodedError("something else", "x"), Object.assign(new Error("x"), { status: "401" }), "str", null];
+  for (const e of odd) {
+    const client: ModelClient = { complete: () => Promise.reject(e) };
+    const r = await extractTasks(input, client);
+    assert.deepEqual(r.attempts.map((a) => a.modelError), ["unknown", "unknown"]);
+  }
+});
+
+test("error messages and bodies are never recorded", async () => {
+  const leak = "SECRET-BODY-TEXT";
+  const errs = [new Error(leak), new CodedError("status_400", leak), Object.assign(new Error(leak), { status: 400, error: { message: leak } })];
+  for (const e of errs) {
+    const r = await extractTasks(input, scripted([e, e]), { keepRaw: true });
+    assert.ok(!JSON.stringify(r).includes(leak));
+  }
+});
+
+test("one model error then invalid output keeps invalid_output", async () => {
+  const r = await extractTasks(input, scripted([new CodedError("timeout", "t"), "not json"]));
+  assert.equal(r.status === "fallback" && r.reason, "invalid_output");
+  assert.deepEqual(r.attempts.map((a) => a.modelError), ["timeout", undefined]);
+  const r2 = await extractTasks(input, scripted(["not json", new CodedError("status_500", "t")]));
+  assert.equal(r2.status === "fallback" && r2.reason, "invalid_output");
 });
 
 test("empty and oversized transcripts never reach the model", async () => {
